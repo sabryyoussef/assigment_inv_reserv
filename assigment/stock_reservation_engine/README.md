@@ -33,6 +33,7 @@ Full procedure: [static/description/screenshots/README.md](static/description/sc
 - FEFO / FIFO ordering
 - Partial allocation support
 - Generated `stock.move` per line when allocated quantity is greater than zero
+- **`stock.picking`** internal transfers linked to those moves with **Transfers** smart button on the batch
 - JSON HTTP API (`/api/reservation/create`, `/api/reservation/allocate`, `/api/reservation/status/<id>`) with Bearer token authentication
 - Security groups, record rules, and server-side enforcement on allocate (owner or manager)
 - Tree and form views with **Stock Moves** smart button
@@ -57,6 +58,15 @@ If lots with valid expiration dates exist, the engine prioritizes the earliest e
 ### Why one move per line
 The business request exists at line level, not quant level. Therefore the module generates one `stock.move` per line using the final allocated quantity, while keeping quant-level allocation abstracted.
 
+### Transfer (`stock.picking`) generation
+Allocated moves move product from each line’s **source location** to the warehouse **Packing / staging zone** (`wh_pack_stock_loc_id` when present), producing **internal transfer** operation types. That keeps behavior safe in demo databases (no mandatory customer delivery setup).
+
+After allocation completes, moves that still need a transfer are grouped by **(`location_id`, `location_dest_id`)**. Each group becomes **one picking** — so batches where every line shares the same source→destination pair yield **one picking**; mixed incompatible pairs split into multiple pickings (deterministic grouping, not heuristic merging across different routes).
+
+Pickings receive **`origin = batch.name`** and **`scheduled_date`** from `batch.scheduled_date` when set. The picking is **`action_confirm()`’d** so it appears under **Inventory → Operations** like a normal transfer; **`action_assign()` is not called automatically**: allocation quantity already came from `stock.quant`; users can run **Check Availability** on the transfer when they want Odoo’s reservation layer aligned with warehouse configuration.
+
+Moves that already belong to a picking are skipped on re-allocation — no duplicate transfers when **Allocate** is clicked again.
+
 ## Functional Flow
 1. User creates a reservation batch.
 2. User adds one or more lines.
@@ -65,9 +75,14 @@ The business request exists at line level, not quant level. Therefore the module
 5. The engine searches `stock.quant` by product, location, and child locations.
 6. It orders quants using FEFO or FIFO.
 7. It calculates allocated quantity and updates line state.
-8. If allocated quantity is greater than zero, it creates a stock move.
+8. If allocated quantity is greater than zero, it creates or updates a `stock.move`.
 9. Batch state is derived from line states.
-10. External systems can query the status endpoint.
+10. For moves without a picking, the engine creates **`stock.picking`** records (internal transfers), links the moves, confirms them, and attaches them to the batch (`picking_ids`).
+11. External systems can query the status endpoint (unchanged).
+
+### Limitations
+- Transfers assume the company has at least one **Internal** operation type and a resolvable **staging destination** (warehouse pack location or internal operation defaults). Otherwise allocation still completes for moves, but picking creation raises a clear configuration error when building the transfer.
+- Cancelling a reservation batch does **not** auto-cancel existing pickings (optional future enhancement).
 
 ## Sprint plan (~6 hours total)
 
@@ -98,7 +113,6 @@ Work was compressed into roughly three two-hour segments (same scope as the orig
 These are **optional production or v2 features**, not gaps in the delivered assignment:
 
 - **SQL row-level locking** on `stock.quant` (`SELECT FOR UPDATE`) was not added; the core flow uses application-level guards (see **Concurrency Strategy**).
-- **Picking / delivery workflow** generation was not built; deliverables called for **`stock.move`** linkage, not full **`stock.picking`** orchestration.
 - **Per-quant allocation audit table** was not added; the reservation line stores aggregate allocated quantity and (where applicable) a representative lot reference.
 
 ## API Endpoints
@@ -248,14 +262,19 @@ The most important query is the `stock.quant` lookup filtered by:
 The current implementation is intentionally simple and clear. A future optimization would group lines by product and location to reuse quant result sets and reduce repeated searches when many lines target the same product.
 
 ### Sample log output
-Actual output from a 2-line allocation run against the demo dataset:
+Allocation emits **INFO** lines from `reservation_batch` with wall-clock timings using `time.perf_counter()`:
+
+- **`Allocation line timing`** — `elapsed_ms` for each processed line (quant search + line writes + move create/update for that line).
+- **`Finished allocation`** — `total_elapsed_ms` for the whole batch pass (excluding the “Starting” line and the `allocation_in_progress` flag write).
+
+Example (2-line batch; values vary with DB and load):
 
 ```
-2026-04-18 07:24:50,135 20828 INFO odoo18 odoo.addons.stock_reservation_engine.models.reservation_batch: Starting allocation for reservation batch RES00018 user=admin id=2
-2026-04-18 07:24:50,236 20828 INFO odoo18 odoo.addons.stock_reservation_engine.models.reservation_batch: Finished allocation for reservation batch RES00018 state=allocated lines=2 moves=2
+... INFO odoo18 odoo.addons.stock_reservation_engine.models.reservation_batch: Starting allocation for reservation batch RES00018 user=admin id=2
+... INFO odoo18 odoo.addons.stock_reservation_engine.models.reservation_batch: Allocation line timing batch=RES00018 line_id=101 product_id=42 elapsed_ms=48.23 allocated_qty=5.0
+... INFO odoo18 odoo.addons.stock_reservation_engine.models.reservation_batch: Allocation line timing batch=RES00018 line_id=102 product_id=43 elapsed_ms=52.11 allocated_qty=3.0
+... INFO odoo18 odoo.addons.stock_reservation_engine.models.reservation_batch: Finished allocation for reservation batch RES00018 state=allocated lines=2 moves=2 total_elapsed_ms=101.05
 ```
-
-The 101 ms elapsed time covers two `stock.quant` searches (one per line), FEFO/FIFO ordering, `allocated_qty` writes, and two `stock.move` creates — all within a single transaction.
 
 ### Time complexity
 At a high level, allocation is linear in relation to the number of candidate quants returned for a line. Database ordering keeps the complexity predictable and avoids Python-side sorting overhead.

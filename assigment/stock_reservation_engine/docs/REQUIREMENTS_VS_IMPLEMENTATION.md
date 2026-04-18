@@ -94,11 +94,22 @@ Legend: **Done** = implemented and usable | **Done (extended)** = requirement me
 | Bonus | Status |
 |-------|--------|
 | Concurrency-safe allocation (DB locking) | **Missing** (documented; optional beyond brief) |
-| Picking generation from moves | **Missing** (explicitly deferred in README) |
-| Profiling / timings in logs | **Partial** (INFO around allocation; no structured timings) |
+| Picking generation from moves | **Done** — internal **`stock.picking`** per compatible move group; **`picking_ids`** + smart button (see README **Transfer (`stock.picking`) generation**) |
+| Profiling / timings in logs | **Done** — INFO **`Allocation line timing`** (`elapsed_ms` per line) and **`Finished allocation`** (`total_elapsed_ms`) |
 | Kanban / dashboard | **Missing** |
 | Advanced API (versioning, machine-readable error codes) | **Partial** (basic **`code`** strings on errors; versioning / prefixes not implemented) |
 | Test automation plan | **Partial** (Odoo tests in-repo; CI pipeline not documented) |
+
+---
+
+## Supplement: picking generation behavior
+
+| Item | Notes |
+|------|--------|
+| **`picking_ids`** | Many2many on **`stock.reservation.batch`** linking generated transfers |
+| **`picking_id`** | Related on **`stock.reservation.line`** from **`move_id.picking_id`** |
+| **Grouping** | Moves grouped by `(location_id, location_dest_id)`; **one picking per group** |
+| **Confirm vs assign** | **`action_confirm()`** on picking; **`action_assign()`** left to users |
 
 ---
 

@@ -255,3 +255,37 @@ class TestStockReservation(TransactionCase):
         line.invalidate_recordset()
         self.assertEqual(line.move_id.id, move_id)
 
+    def test_allocation_creates_picking_linked_moves(self):
+        stocked = self._add_stock(self.product, self.stock_location, 10.0)
+        if not stocked:
+            self.skipTest('Requires storable product with quants')
+        batch = self._create_batch(self.product, 4.0)
+        batch.action_allocate()
+        line = batch.line_ids[0]
+        self.assertTrue(line.move_id)
+        self.assertEqual(line.move_id.picking_id, line.picking_id)
+        self.assertEqual(len(batch.picking_ids), 1)
+        picking = batch.picking_ids[0]
+        self.assertIn(line.move_id, picking.move_ids)
+        self.assertEqual(picking.origin, batch.name)
+        self.assertEqual(picking.picking_type_id.code, 'internal')
+
+    def test_no_picking_when_nothing_allocated(self):
+        batch = self._create_batch(self.product, 5.0)
+        batch.action_allocate()
+        line = batch.line_ids[0]
+        self.assertFalse(line.move_id)
+        self.assertFalse(batch.picking_ids)
+
+    def test_second_allocate_same_picking_count(self):
+        stocked = self._add_stock(self.product, self.stock_location, 10.0)
+        if not stocked:
+            self.skipTest('Requires storable product with quants')
+        batch = self._create_batch(self.product, 25.0)
+        batch.action_allocate()
+        self.assertEqual(len(batch.picking_ids), 1)
+        pid = batch.picking_ids.ids[0]
+        batch.action_allocate()
+        batch.invalidate_recordset()
+        self.assertEqual(batch.picking_ids.ids, [pid])
+

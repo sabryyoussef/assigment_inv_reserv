@@ -23,6 +23,11 @@ class StockReservationLine(models.Model):
         ('cancelled', 'Cancelled'),
     ], default='draft', required=True, index=True)
     move_id = fields.Many2one('stock.move', string='Generated Move', readonly=True, copy=False, index=True)
+    picking_id = fields.Many2one(
+        related='move_id.picking_id',
+        string='Transfer',
+        readonly=True,
+    )
     note = fields.Char()
 
     _sql_constraints = [
