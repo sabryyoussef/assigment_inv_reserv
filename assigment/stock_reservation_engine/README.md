@@ -24,7 +24,7 @@ Screenshots ship under Odoo’s standard asset path **`static/description/screen
 
 Full procedure: [static/description/screenshots/README.md](static/description/screenshots/README.md).
 
-## Scope Delivered
+## Scope delivered
 - Custom models:
   - `stock.reservation.batch`
   - `stock.reservation.line`
@@ -33,10 +33,14 @@ Full procedure: [static/description/screenshots/README.md](static/description/sc
 - FEFO / FIFO ordering
 - Partial allocation support
 - Generated `stock.move` per line when allocated quantity is greater than zero
-- JSON API with token-based authentication
-- Security groups and record rules
-- Tree and form views with stock move smart button
-- Odoo tests covering key scenarios
+- JSON HTTP API (`/api/reservation/create`, `/api/reservation/allocate`, `/api/reservation/status/<id>`) with Bearer token authentication
+- Security groups, record rules, and server-side enforcement on allocate (owner or manager)
+- Tree and form views with **Stock Moves** smart button
+- **Automated tests**: `TransactionCase` (allocation paths, authorization, idempotent re-allocate); **`HttpCase`** for API errors and success paths (create, allocate, status — unauthorized, validation, forbidden, not found)
+- **Install-ready demo**: MDW warehouse, locations, products, lots, sample batches, demo users/API tokens (`data/demo_inventory_master.xml`, `data/reservation_demo_data.xml`)
+- **`hooks.ensure_demo_stock`**: idempotent quant levels via `post_init_hook` and migration **`18.0.1.5.0`**
+- **UI capture tooling**: Playwright scripts under `tools/screenshots/`; PNG outputs and indexes under `static/description/screenshots/`
+- **Documentation**: this README; `docs/REQUIREMENTS_VS_IMPLEMENTATION.md`, `docs/TEST_REPORT.md`, assignment notes under `docs/`
 
 ## Architecture Decisions
 ### Why Batch + Lines
@@ -83,14 +87,19 @@ Work was compressed into roughly three two-hour segments (same scope as the orig
 
 ### Hours 5–6
 - Implemented JSON APIs and token authentication
-- Added tests for full allocation, partial allocation, no stock, and FEFO
-- Wrote README covering architecture, performance, database design, and concurrency
-- Added lightweight application-level protection against double processing
+- Expanded automated tests (transaction + HTTP/API coverage)
+- Wrote and iterated README (architecture, performance, concurrency, demo, screenshots)
+- Added lightweight application-level protection against double processing (`allocation_in_progress`, skip lines already allocated with moves)
+- Added install-ready demo XML, **`ensure_demo_stock`** hook, and upgrade migration for demo stock
+- Added Playwright screenshot tooling and packaged assets under **`static/description/screenshots/`**
+- Added supplementary docs under **`docs/`** (requirements mapping, test report)
 
-### What I intentionally did NOT implement and why
-- Full row-level locking on `stock.quant` was not fully implemented to keep the sprint focused on correctness and clarity of the core allocation flow.
-- Picking generation was intentionally deferred because the assignment requires move generation, not full warehouse workflow orchestration.
-- A dedicated quant allocation trace table was deferred to avoid over-engineering within the sprint scope.
+### Stretch goals / not implemented (by design)
+These are **optional production or v2 features**, not gaps in the delivered assignment:
+
+- **SQL row-level locking** on `stock.quant` (`SELECT FOR UPDATE`) was not added; the core flow uses application-level guards (see **Concurrency Strategy**).
+- **Picking / delivery workflow** generation was not built; deliverables called for **`stock.move`** linkage, not full **`stock.picking`** orchestration.
+- **Per-quant allocation audit table** was not added; the reservation line stores aggregate allocated quantity and (where applicable) a representative lot reference.
 
 ## API Endpoints
 ### Create reservation
@@ -225,7 +234,7 @@ To strip demo artefacts from a database, remove related records or restore a bac
 
 ## Performance Strategy
 ### Avoiding N+1 queries
-Each reservation line uses a single ordered `stock.quant` query. The implementation avoids nested per-quant reads and delegates sorting to the database.
+Each reservation line performs a **`stock.quant` `search`** for that line’s product/location (and optional lot domain). Candidate quants are then consumed in a single pass for that line (FEFO may apply an additional ordering pass when expiry data exists).
 
 ### Critical query
 The most important query is the `stock.quant` lookup filtered by:
@@ -282,14 +291,19 @@ For production-grade concurrency safety, the next step would be:
 3. Optionally add retry logic for lock contention or serialization failures
 
 ## Testing
-- **`TransactionCase`**: allocation scenarios (full, partial, no stock, FEFO), server-side allocation authorization (non-owner / non-manager denied).
-- **`HttpCase`** (minimal): JSON-RPC `POST /api/reservation/create` — missing Bearer → structured error (`code`); valid Bearer + stock → success payload. HTTP tests **commit** created tokens/quants so the separate HTTP worker cursor can see them.
 
-Covered scenarios (transaction tests):
-1. Full allocation when enough stock exists
-2. Partial allocation when available stock is lower than requested quantity
-3. No-stock scenario
-4. FEFO selection when lots have expiration dates
+### Transaction tests (`tests/test_reservation.py`)
+- Allocation: **full**, **partial**, **no stock**, **FEFO** (preferred lot context)
+- Batch lifecycle: cancel-all-lines state, confirm without lines (error)
+- **`action_allocate`** authorization: denied for neither owner nor manager; allowed for owner and for manager on another user’s batch
+- Re-running allocate on an already satisfied line does **not** duplicate **`stock.move`**
+
+### HTTP / API tests (`tests/test_reservation_http.py`)
+Uses JSON-RPC **`POST`** bodies to `type='json'` routes (`/api/reservation/create`, `/api/reservation/allocate`) and **`GET`** `/api/reservation/status/<id>` with **`Authorization: Bearer`**.
+
+Includes: unauthorized / inactive token; validation (empty lines, bad line shape); **create → allocate** success path; allocate unauthorized / missing batch / not found / forbidden (non-owner); status unauthorized / not found / forbidden / success.
+
+`HttpCase` runs with **`readonly_enabled = False`** where writes are required so the HTTP layer sees created tokens/quants (**`flush_all`** where appropriate).
 
 ## Known Limitations
 - Full database-level locking is not implemented. The `allocation_in_progress` flag is an application-level guard only. In a multi-worker environment two concurrent transactions can still read the same available quantity before either commits, potentially causing over-allocation. The production-grade solution is to lock candidate `stock.quant` rows with `SELECT ... FOR UPDATE` before the allocation loop.
@@ -297,8 +311,8 @@ Covered scenarios (transaction tests):
 - No quant allocation trace table. The chosen lot is stored on the line for traceability, but per-quant breakdown is not persisted.
 - FEFO stores the first chosen lot on the line. It does not persist a quant-by-quant breakdown.
 - No UoM conversion on reservation lines. The `uom_id` is taken from `product_id.uom_id` only. Lines with a different requested unit of measure are not supported.
-- API tokens are hashed with SHA-256 on save. Existing tokens created before this version stored their value in plaintext and must be deleted and re-created. Raw token values are never retrievable after saving.
-- The API has no rate limiting. This is acceptable for the current sprint scope. A production deployment should add throttling at the reverse-proxy or middleware level.
+- API tokens are stored as **SHA-256** hashes; only the hash is persisted. Raw secrets cannot be read back from the database after save—issue a new token if you lose the secret.
+- The API has no built-in rate limiting. For production, add throttling at the reverse proxy or API gateway.
 - Create/list paths still use `sudo()` where needed for cross-company/token lookup; sensitive actions (`action_allocate`, `action_confirm`) are invoked **with the authenticated API user** so record rules and `has_group` checks apply correctly.
 
 ## Installation
@@ -310,28 +324,26 @@ Covered scenarios (transaction tests):
    - `Stock Reservation Manager`
 5. Create API tokens from **Inventory > Stock Reservations > API Tokens** if external access is needed.
 
-## Manual Test Scenarios
+## Manual test scenarios
+
+With **demo data** installed, you can open **Inventory → Stock Reservations → Reservation Batches** and use the pre-built batches in the **Reservation batches (xml ids)** table below (e.g. `demo_batch_draft`, `demo_batch_partial`, `demo_batch_fefo`) instead of creating products and quants from scratch.
+
 ### Scenario 1: Full allocation
-- Create on-hand stock for a product
-- Create a reservation batch with requested quantity lower than available quantity
-- Confirm and allocate
-- Expected result: line state `allocated`, move created
+- **Demo shortcut:** open batch **`demo_batch_dual_full`** (or draft flow with Product A), **Allocate**.
+- **From scratch:** create on-hand stock, add a batch line with requested quantity lower than available, confirm and allocate.
+- **Expected:** line state **`allocated`**, **`stock.move`** created when allocated quantity &gt; 0.
 
 ### Scenario 2: Partial allocation
-- Create on-hand stock lower than requested quantity
-- Confirm and allocate
-- Expected result: line state `partial`, allocated quantity lower than requested quantity
+- **Demo shortcut:** **`demo_batch_partial`** after **Allocate** (Demo Product B vs 40 requested, 12 on hand).
+- **Expected:** line **`partial`**, allocated quantity &lt; requested.
 
 ### Scenario 3: No stock
-- Create reservation without any available stock
-- Confirm and allocate
-- Expected result: line state `not_available`, no move created
+- **Demo shortcut:** **`demo_batch_empty`** (Demo Product C), **Allocate**.
+- **Expected:** line **`not_available`**, no move.
 
 ### Scenario 4: FEFO behavior
-- Create two lots with different expiration dates
-- Add stock to both lots
-- Allocate one line
-- Expected result: the line prefers the earliest expiration lot
+- **Demo shortcut:** **`demo_batch_fefo`** with Perishable X stock in **Cold Zone** (two lots; hook sets earlier expiry on LOT-X-001).
+- **Expected:** allocation consumes earlier-expiring lot stock first; line shows aggregate result (see **Known Limitations** for stored detail).
 
 ## Future Improvements
 - Full concurrency-safe allocation with SQL row locking (`SELECT FOR UPDATE` on `stock.quant`)
