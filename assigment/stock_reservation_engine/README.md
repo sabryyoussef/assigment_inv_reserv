@@ -1,5 +1,7 @@
 # Stock Reservation Engine
 
+> Standard addon layout in this workspace: `addons/stock_reservation_engine`
+
 ## Overview
 
 Custom reservation and allocation on top of Odoo Inventory: **`stock.reservation.batch`** / **`stock.reservation.line`** models; allocation from **`stock.quant`** with **FEFO** when lot expiration exists (otherwise **FIFO**); **`stock.move`** generation; **internal transfer** **`stock.picking`** creation grouped from moves; optional **JSON HTTP API** with Bearer tokens; security groups and record rules; install-ready **demo inventory** via XML and **`hooks.ensure_demo_stock`**; and a lightweight **Reservation Dashboard** (native **Graph** + **Pivot** on reservation lines for reporting visibility).
@@ -197,7 +199,7 @@ GitHub Actions workflow **`.github/workflows/odoo-module-ci.yml`** runs on pushe
 - **`action_assign()`** on generated pickings is **not** automatic; operators run **Check Availability** if needed.
 - **Multi-company**: logic uses **`company_id`** on the batch and standard domain filters; no extra cross-company isolation testing is implied.
 - **Operation type / destination fallback** is **first matching Internal type** and **default destination** when pack location is missing — simplified, not a full routing engine.
-- Batch **cancel** does **not** auto-cancel existing pickings.
+- Batch cancellation now propagates to linked non-done internal transfers, but broader downstream delivery orchestration is still intentionally simplified.
 - No per-quant audit table; line stores aggregate **`allocated_qty`** and a representative **`lot_id`** where applicable.
 - No UoM conversion on lines (product UoM only).
 - API: no built-in rate limiting; token stored as hash only.
@@ -471,7 +473,7 @@ Routes **`/api/reservation/create`**, **`allocate`**, **`status/<id>`**; **`_aut
 | Bearer token auth in controller | ✅ |
 | Demo inventory master + `hooks.ensure_demo_stock` (post-init hook + migration) | ✅ |
 
-**Intentionally deferred:** `SELECT FOR UPDATE` locking — design-level explanation provided instead (see Concurrency Strategy); full routing solver for multi-warehouse destinations — simplified to pack location / first internal type fallback.
+**Intentionally deferred:** a full retry or queue-based concurrency strategy for extreme contention; the current implementation already adds row-level NOWAIT locking, but deeper production hardening remains future work. Full routing resolution across complex warehouse topologies is also intentionally simplified to pack location / first internal type fallback.
 
 ---
 

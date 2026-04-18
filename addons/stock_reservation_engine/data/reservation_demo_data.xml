@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+        <record id="base.user_admin" model="res.users">
+            <field name="groups_id" eval="[(4, ref('stock.group_stock_multi_warehouses')), (4, ref('stock_reservation_engine.group_stock_reservation_manager'))]"/>
+        </record>
+
+        <record id="partner_demo_reservation_user" model="res.partner">
+            <field name="name">Demo Reservation User</field>
+            <field name="email">demo.res.user@test.local</field>
+        </record>
+        <record id="user_demo_reservation" model="res.users">
+            <field name="name">Demo Reservation User</field>
+            <field name="login">demo_res_user</field>
+            <field name="password">demo_res_user</field>
+            <field name="partner_id" ref="partner_demo_reservation_user"/>
+            <field name="company_id" ref="base.main_company"/>
+            <field name="company_ids" eval="[(6, 0, [ref('base.main_company')])]"/>
+            <field name="groups_id" eval="[(6, 0, [ref('base.group_user'), ref('stock.group_stock_user'), ref('stock.group_stock_multi_warehouses'), ref('stock_reservation_engine.group_stock_reservation_user')])]"/>
+        </record>
+
+        <record id="demo_batch_draft" model="stock.reservation.batch">
+            <field name="request_user_id" ref="base.user_admin"/>
+            <field name="company_id" ref="base.main_company"/>
+            <field name="state">draft</field>
+            <field name="priority">2</field>
+        </record>
+        <record id="demo_line_full" model="stock.reservation.line">
+            <field name="batch_id" ref="demo_batch_draft"/>
+            <field name="product_id" model="product.template" eval="obj(ref('stock_reservation_engine.demo_pt_full')).product_variant_ids[:1].id"/>
+            <field name="requested_qty">5</field>
+            <field name="location_id" model="stock.warehouse" eval="obj(ref('stock_reservation_engine.warehouse_demo_mdw')).lot_stock_id.id"/>
+            <field name="note">Confirm then allocate: full allocation.</field>
+        </record>
+
+        <record id="demo_batch_partial" model="stock.reservation.batch">
+            <field name="request_user_id" ref="base.user_admin"/>
+            <field name="company_id" ref="base.main_company"/>
+            <field name="state">confirmed</field>
+            <field name="priority">3</field>
+        </record>
+        <record id="demo_line_partial" model="stock.reservation.line">
+            <field name="batch_id" ref="demo_batch_partial"/>
+            <field name="product_id" model="product.template" eval="obj(ref('stock_reservation_engine.demo_pt_partial')).product_variant_ids[:1].id"/>
+            <field name="requested_qty">40</field>
+            <field name="location_id" model="stock.warehouse" eval="obj(ref('stock_reservation_engine.warehouse_demo_mdw')).lot_stock_id.id"/>
+        </record>
+
+        <record id="demo_batch_empty" model="stock.reservation.batch">
+            <field name="request_user_id" ref="base.user_admin"/>
+            <field name="company_id" ref="base.main_company"/>
+            <field name="state">confirmed</field>
+            <field name="priority">1</field>
+        </record>
+        <record id="demo_line_empty" model="stock.reservation.line">
+            <field name="batch_id" ref="demo_batch_empty"/>
+            <field name="product_id" model="product.template" eval="obj(ref('stock_reservation_engine.demo_pt_empty')).product_variant_ids[:1].id"/>
+            <field name="requested_qty">10</field>
+            <field name="location_id" model="stock.warehouse" eval="obj(ref('stock_reservation_engine.warehouse_demo_mdw')).lot_stock_id.id"/>
+        </record>
+
+        <record id="demo_api_token" model="reservation.api.token">
+            <field name="name">Demo reservation API (admin)</field>
+            <field name="user_id" ref="base.user_admin"/>
+            <field name="token">demo-reservation-api-token-change-me</field>
+            <field name="active" eval="True"/>
+        </record>
+    </data>
+</odoo>

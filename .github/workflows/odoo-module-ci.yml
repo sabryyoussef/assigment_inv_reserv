@@ -30,7 +30,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Verify Python syntax
-        run: python3 -m compileall assigment/stock_reservation_engine
+        run: python3 -m compileall addons/stock_reservation_engine
 
       - name: Pull Odoo 18 image
         run: docker pull odoo:18.0
@@ -38,7 +38,7 @@ jobs:
       - name: Run module tests
         run: |
           docker run --rm --network host \
-            -v "$GITHUB_WORKSPACE/assigment:/mnt/extra-addons" \
+            -v "$GITHUB_WORKSPACE/addons:/mnt/extra-addons" \
             odoo:18.0 \
             odoo \
             --db_host 127.0.0.1 \

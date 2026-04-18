@@ -58,7 +58,7 @@ Problem:
 - Form button currently appears manager-only
 
 Target file:
-- assigment/stock_reservation_engine/views/reservation_batch_views.xml
+- addons/stock_reservation_engine/views/reservation_batch_views.xml
 
 Action:
 - Make the Allocate button available to reservation users as well, while keeping server-side authorization as the final guard
@@ -82,7 +82,7 @@ Problem:
 - Two users could still allocate overlapping stock in separate transactions
 
 Target file:
-- assigment/stock_reservation_engine/models/reservation_batch.py
+- addons/stock_reservation_engine/models/reservation_batch.py
 
 Action:
 - Add row-level locking or transactional protection around the candidate stock.quant records during allocation
@@ -110,7 +110,7 @@ Status: Completed on the current branch with stronger validation and response co
 Task status: Completed on the current branch
 
 Target file:
-- assigment/stock_reservation_engine/controllers/api.py
+- addons/stock_reservation_engine/controllers/api.py
 
 Actions:
 - Keep response shapes fully consistent across all endpoints
@@ -134,9 +134,9 @@ Status: Completed on the current branch with clearer README evidence for N+1, cr
 Task status: Completed on the current branch
 
 Target files:
-- assigment/stock_reservation_engine/README.md
-- assigment/stock_reservation_engine/models/reservation_batch.py
-- assigment/stock_reservation_engine/models/reservation_line.py
+- addons/stock_reservation_engine/README.md
+- addons/stock_reservation_engine/models/reservation_batch.py
+- addons/stock_reservation_engine/models/reservation_line.py
 
 Actions:
 - Cross-check the README wording against the assignment’s mandatory performance section
@@ -160,9 +160,9 @@ Status: Completed on the current branch with final reviewer-facing checklist and
 Task status: Completed on the current branch
 
 Target files:
-- assigment/stock_reservation_engine/README.md
-- assigment/stock_reservation_engine/docs/TEST_REPORT.md
-- assigment/stock_reservation_engine/docs/REQUIREMENTS_VS_IMPLEMENTATION.md
+- addons/stock_reservation_engine/README.md
+- addons/stock_reservation_engine/docs/TEST_REPORT.md
+- addons/stock_reservation_engine/docs/REQUIREMENTS_VS_IMPLEMENTATION.md
 
 Actions:
 - Update docs to match the exact final behavior after the UI and concurrency improvements
