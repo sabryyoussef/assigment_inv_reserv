@@ -19,9 +19,12 @@ Assets live under **`static/description/screenshots/`**. Capture tooling: **`too
 - **`action_view_moves`**: filtered list/form on `stock.move` (inline window action; no dependency on stock menu XML ids)
 - HTTP API: `/api/reservation/create`, `/api/reservation/allocate`, `/api/reservation/status/<id>`
 - Security groups, record rules, server-side allocate authorization
+- Batch cancellation now also cancels linked internal transfers that are not already done
 - Demo XML + **`hooks.ensure_demo_stock`** (post-init + migrations)
 - **Reservation Dashboard**: **`stock.reservation.line`** graph (bar, state / product, requested vs allocated measures) and pivot (product × state); menu **Inventory → Stock Reservations → Dashboard**
-- Tests: **`TransactionCase`** (allocation paths, auth, moves, pickings, idempotency); **`HttpCase`** (API routes). Dashboard is **not** covered by automated tests (manual verification only).
+- Versioned API aliases for long-term compatibility: **`/api/v1/reservation/create`**, **`/api/v1/reservation/allocate`**, **`/api/v1/reservation/status/<id>`**
+- Tests: **`TransactionCase`** (allocation paths, auth, moves, pickings, idempotency, cancel flow, dashboard action config); **`HttpCase`** (API routes including v1 aliases). Dashboard rendering is still primarily a manual verification step.
+- CI automation via GitHub Actions in **`.github/workflows/odoo-module-ci.yml`**
 - **`tools/qa_full_validation.py`** (shell): seven ORM scenarios → **`TEST_EXECUTION_REPORT.md`**
 
 ---
@@ -126,8 +129,9 @@ Under **Inventory → Stock Reservations** (visible to reservation user or manag
 3. Open **Inventory → Stock Reservations → Reservation Batches** (or a demo batch).
 4. **Confirm**, then **Allocate**.
 5. On the batch form, open **Transfers** — expect at least one internal transfer when stock was allocated; **`origin`** matches batch name.
-6. **Allocate** again on a **partial** batch (requested qty &gt; on hand): **picking count** and **picking ids** must stay stable (no duplicate picking for already-linked moves).
-7. **Dashboard:** **Stock Reservations → Dashboard** — confirm **graph** shows bars by **state** (and stacked **product**); switch to **pivot**; check **requested** vs **allocated** for products and states (filters in search apply to both views).
+6. Cancel the batch and confirm linked non-done transfers move to the cancelled state as well.
+7. **Allocate** again on a **partial** batch (requested qty &gt; on hand): **picking count** and **picking ids** must stay stable (no duplicate picking for already-linked moves).
+8. **Dashboard:** **Stock Reservations → Dashboard** — confirm **graph** shows bars by **state** (and stacked **product**); switch to **pivot**; check **requested** vs **allocated** for products and states (filters in search apply to both views).
 
 ## Final reviewer checklist
 
@@ -172,7 +176,18 @@ Pipe into **`odoo-bin shell`** (same database as the server). Runs **`ensure_dem
 
 ### Dashboard
 
-No **`TransactionCase`** / **`HttpCase`** targets the dashboard views. Validate manually using **How to verify** step 7.
+A lightweight automated regression now checks that the dashboard action still targets **graph** and **pivot** reporting on **`stock.reservation.line`**. Final visual validation remains manual using **How to verify** step 8.
+
+---
+
+## CI automation
+
+GitHub Actions workflow **`.github/workflows/odoo-module-ci.yml`** runs on pushes and pull requests. It:
+
+- compiles the addon Python files for syntax safety
+- starts PostgreSQL
+- runs Odoo 18 in Docker
+- installs **`stock_reservation_engine`** and executes the module test suite automatically
 
 ---
 
@@ -202,6 +217,8 @@ No **`TransactionCase`** / **`HttpCase`** targets the dashboard views. Validate 
 ---
 
 ## API endpoints
+
+Versioned aliases are also available under **`/api/v1/reservation/...`** for forward-compatible integrations.
 
 ### Create — `POST /api/reservation/create`
 

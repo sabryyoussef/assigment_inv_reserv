@@ -4,35 +4,42 @@ Date: 2026-04-18
 Project: stock_reservation_engine
 
 ## Goal
-Close the remaining gaps between the delivered module and the original assignment, with priority on items that improve reviewer confidence and submission quality.
+Deliver and document a production-minded Odoo reservation module that matches the assignment brief across functional scope, engineering quality, and reviewer-facing evidence.
 
 ---
 
 ## Current status summary
 
-### Already completed
-- Custom reservation batch and line models
-- Allocation engine using stock.quant with FEFO or FIFO behavior
-- Partial allocation handling
-- Stock move generation and picking linkage
-- API endpoints with bearer-token authentication
-- Security rules for user-owned vs manager-wide access
-- UI authorization aligned for reservation allocation
-- Concurrency protection strengthened with row-level NOWAIT locking
-- API validation and response handling hardened
-- README, requirement mapping, and test report documentation
-- Automated ORM and HTTP tests
+### Mandatory functional scope completed
+- Working module with custom reservation batch and line models
+- Allocation from stock.quant using FEFO when expiry exists, otherwise FIFO
+- Respect for selected location plus child locations
+- Partial allocation support with allocated quantity and line-state updates
+- Stock move generation and linkage back to reservation lines
+- JSON API for create, allocate, and status with bearer-token authentication
+- Tree and form views with smart-button navigation for related inventory records
+- Security rules for own-record access vs manager-wide access
+
+### Mandatory engineering scope completed
+- README includes architecture decisions plus a realistic Day 1 / Day 2 / Day 3 sprint simulation
+- Testing covers allocation logic, partial allocation, no-stock behavior, authorization, and HTTP API flows
+- Performance documentation explains N+1 avoidance, critical queries, query behavior, and scaling reasoning
+- Database documentation calls out indexes, constraints, and why they matter
+- Concurrency risks and mitigation are documented, with row-level NOWAIT locking added as extra hardening
+- Known limitations and trade-offs are clearly stated for reviewer confidence
+
+### Bonus items delivered
+- Concurrency-safe allocation hardening
+- Picking generation from allocated moves
+- Profiling and timing logs during allocation
+- Dashboard reporting for reservation visibility
+- Advanced API polish with versioned aliases
+- Test automation support through CI workflow documentation
 
 ### Remaining gaps
-- Dashboard is still primarily manually verified
-- Optional nice-to-have polish remains outside the mandatory assignment scope
-
-### Additional assignment-verification items
-Even where the feature already exists, the final delivery should explicitly prove:
-- The 3-day sprint story is easy to find and clearly prioritized
-- The performance section explicitly covers N+1 avoidance, critical queries, and scaling reasoning
-- The database section clearly maps indexes and constraints to the implemented models
-- The code and docs look clean, readable, and reviewer-friendly
+- No mandatory assignment gaps remain on the current branch
+- Dashboard rendering still benefits from one final manual reviewer sanity check
+- Any further work would be optional production polish beyond the assignment brief
 
 ---
 
@@ -44,6 +51,8 @@ Estimated effort: 30–60 minutes
 Status: Completed on the current branch
 
 ### Task 1: Align UI with backend authorization
+Task status: Completed on the current branch
+
 Problem:
 - Backend allows allocation by batch owner or reservation manager
 - Form button currently appears manager-only
@@ -67,6 +76,8 @@ Estimated effort: 2–4 hours
 Status: Completed on the current branch with lock-aware handling and regression coverage
 
 ### Task 2: Add safer allocation under contention
+Task status: Completed on the current branch
+
 Problem:
 - Two users could still allocate overlapping stock in separate transactions
 
@@ -96,6 +107,8 @@ Estimated effort: 1–2 hours
 Status: Completed on the current branch with stronger validation and response consistency
 
 ### Task 3: Harden the HTTP API
+Task status: Completed on the current branch
+
 Target file:
 - assigment/stock_reservation_engine/controllers/api.py
 
@@ -118,6 +131,8 @@ Estimated effort: 45–90 minutes
 Status: Completed on the current branch with clearer README evidence for N+1, critical queries, scaling, indexes, and constraints
 
 ### Task 4: Make the engineering evidence explicit
+Task status: Completed on the current branch
+
 Target files:
 - assigment/stock_reservation_engine/README.md
 - assigment/stock_reservation_engine/models/reservation_batch.py
@@ -142,6 +157,8 @@ Estimated effort: 45–90 minutes
 Status: Completed on the current branch with final reviewer-facing checklist and submission polish
 
 ### Task 5: Add a final reviewer-facing validation pass
+Task status: Completed on the current branch
+
 Target files:
 - assigment/stock_reservation_engine/README.md
 - assigment/stock_reservation_engine/docs/TEST_REPORT.md
@@ -160,23 +177,24 @@ Acceptance criteria:
 
 ---
 
-## Optional nice-to-have items
-Priority: Low
-Estimated effort: variable
+## Bonus items delivered
+Priority: Optional but highly valued
+Status: Completed on the current branch
 
-These are not required to satisfy the assignment, but can improve polish:
-- Auto-run picking assignment when appropriate
-- Cancel linked pickings when a batch is cancelled
-- Add one more manual or automated dashboard check
-- Add CI instructions for running tests automatically
-- Add API version prefixing for long-term maintainability
+These items now align directly with the assignment bonus section:
+- Concurrency-safe allocation implementation with lock-aware handling
+- Picking generation from allocated moves
+- Profiling output and timing logs during allocation
+- Dashboard reporting view for reviewer visibility
+- Advanced API structure with versioned aliases for long-term maintainability
+- Testing automation plan via CI workflow support
 
 ---
 
 ## Recommended execution order
-1. Do one final manual dashboard check if desired
-2. Perform a final submission review against the original assignment
-3. Merge or submit the branch
+1. Optionally do one last manual dashboard sanity check
+2. Package or submit the branch for review
+3. Only continue with extra polish if specifically requested
 
 ---
 
@@ -190,4 +208,4 @@ The assignment should be considered fully ready when:
 ---
 
 ## Practical recommendation
-The mandatory assignment scope is now covered. If time remains, focus only on optional dashboard/manual polish or submission packaging.
+The mandatory assignment scope is complete and submission-ready. From this point, focus only on optional dashboard/manual polish or final packaging for handoff.
