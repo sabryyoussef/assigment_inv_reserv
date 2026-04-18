@@ -13,19 +13,19 @@ class TestStockReservation(TransactionCase):
         cls.stock_location = cls.env.ref('stock.stock_location_stock')
         cls.output_location = cls.env.ref('stock.stock_location_output')
         cls.uom_unit = cls.env.ref('uom.product_uom_unit')
-        cls.product = cls.env['product.product'].create({
+        cls.product = cls.env['product.template'].create({
             'name': 'Reservation Product',
             'detailed_type': 'storable',
             'uom_id': cls.uom_unit.id,
             'uom_po_id': cls.uom_unit.id,
-        })
-        cls.lot_product = cls.env['product.product'].create({
+        }).product_variant_ids[0]
+        cls.lot_product = cls.env['product.template'].create({
             'name': 'Lot Reservation Product',
             'detailed_type': 'storable',
             'tracking': 'lot',
             'uom_id': cls.uom_unit.id,
             'uom_po_id': cls.uom_unit.id,
-        })
+        }).product_variant_ids[0]
 
     def _create_batch(self, product, qty):
         batch = self.env['stock.reservation.batch'].create({
