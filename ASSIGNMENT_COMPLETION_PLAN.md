@@ -64,6 +64,7 @@ Acceptance criteria:
 ## Phase 2 — Strengthen concurrency handling
 Priority: Medium to High
 Estimated effort: 2–4 hours
+Status: Core NOWAIT locking implementation added on the current branch; full load validation can be done next
 
 ### Task 2: Add safer allocation under contention
 Problem:

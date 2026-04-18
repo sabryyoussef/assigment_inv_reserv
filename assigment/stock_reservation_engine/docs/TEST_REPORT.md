@@ -40,6 +40,7 @@ Odoo discovers test methods independently of runtime outcome. Methods that resol
 | `test_allocate_denied_non_owner_non_manager` | Ensures a user who is neither owner nor reservation manager cannot allocate another user’s batch. |
 | `test_owner_can_allocate_own_batch` | Ensures the reservation owner can allocate their own batch. |
 | `test_manager_can_allocate_other_users_batch` | Ensures a reservation manager can allocate a batch owned by another user under record rules. |
+| `test_allocate_raises_when_quant_rows_are_locked` | Uses a second database cursor to lock a `stock.quant` row and verifies the allocation fails with a predictable user-facing error instead of silently racing. |
 | `test_second_allocate_does_not_duplicate_move` | Ensures a second allocation pass does not create duplicate moves when the batch remains partially fulfillable. |
 
 ### tests/test_reservation_http.py (HttpCase)

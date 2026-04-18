@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timedelta
 
-from odoo.exceptions import AccessError
+from odoo.exceptions import AccessError, UserError
 
 from odoo.tests import tagged
 from odoo.tests.common import TransactionCase
@@ -239,6 +239,25 @@ class TestStockReservation(TransactionCase):
         line = batch.line_ids[0]
         if stocked:
             self.assertEqual(line.state, 'allocated')
+
+    def test_allocate_raises_when_quant_rows_are_locked(self):
+        stocked = self._add_stock(self.product, self.stock_location, 8.0)
+        if not stocked:
+            self.skipTest('Requires storable product with quants')
+
+        batch = self._create_batch(self.product, 3.0)
+        quant = self.env['stock.quant'].search([
+            ('product_id', '=', self.product.id),
+            ('location_id', 'child_of', self.stock_location.id),
+            ('quantity', '>', 0),
+            ('company_id', '=', self.env.company.id),
+        ], limit=1)
+        self.assertTrue(quant)
+
+        with self.env.registry.cursor() as cr2:
+            cr2.execute('SELECT id FROM stock_quant WHERE id = %s FOR UPDATE', [quant.id])
+            with self.assertRaises(UserError):
+                batch.action_allocate()
 
     def test_second_allocate_does_not_duplicate_move(self):
         stocked = self._add_stock(self.product, self.stock_location, 10.0)
