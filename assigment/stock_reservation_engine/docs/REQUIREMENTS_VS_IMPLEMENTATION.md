@@ -60,6 +60,10 @@ Legend: **Done** = implemented and usable | **Done (extended)** = requirement me
 | Smart button → related stock moves | **Done** | `action_view_moves`, `move_count` (inline `ir.actions.act_window` dict — no dependency on **`stock.stock_move_action`** / legacy menu XML ids) |
 | Smart button → transfers | **Done** | `action_view_pickings`, `picking_count`, `picking_ids` |
 
+| Feature | Status | Notes |
+|---------|--------|-------|
+| **Dashboard / reporting** | **Implemented** | **`views/reservation_dashboard_views.xml`**: native **Graph** (bar, stacked by state/product; measures `requested_qty`, `allocated_qty`) + **Pivot** (rows `product_id`, cols `state`, same measures on **`stock.reservation.line`**). Menu **Stock Reservations → Dashboard** (`action_reservation_dashboard`). **No automated tests** for dashboard views (manual verification). |
+
 ### Security
 
 | Requirement | Status | Evidence / notes |
@@ -103,7 +107,8 @@ Legend: **Done** = implemented and usable | **Done (extended)** = requirement me
 | Concurrency-safe allocation (DB locking) | **Missing** (documented; optional beyond brief) |
 | Picking generation from moves | **Done** — internal transfer **`stock.picking`** grouped by **`(location_id, location_dest_id)`**; **`picking_ids`** + **Transfers** smart button; confirm without auto-assign (see README **Stock transfer (picking) generation**) |
 | Profiling / timings in logs | **Done** — INFO **`Allocation line timing`** (`elapsed_ms` per line) and **`Finished allocation`** (`total_elapsed_ms`) |
-| Kanban / dashboard | **Missing** |
+| Kanban | **Missing** |
+| Lightweight reporting dashboard (graph/pivot on lines) | **Done (extra)** — see README **Reservation dashboard**; not Kanban |
 | Advanced API (versioning, machine-readable error codes) | **Partial** (basic **`code`** strings on errors; versioning / prefixes not implemented) |
 | Test automation plan | **Partial** (Odoo tests in-repo; CI pipeline not documented) |
 
@@ -143,7 +148,7 @@ Legend: **Done** = implemented and usable | **Done (extended)** = requirement me
 
 **Nice-to-have**
 
-7. Kanban/dashboard, structured profiling timers, CI checklist for automated tests.
+7. Kanban board view; structured profiling timers; CI checklist for automated tests. (Native graph/pivot dashboard is already implemented.)
 
 The implementation **satisfies the assignment scope** and demonstrates **solid engineering practices**, while **clearly separating** optional production-grade enhancements as **documented future work**.
 
