@@ -106,6 +106,83 @@ The API expects a bearer token:
 
 Tokens are managed using the `Reservation API Tokens` menu.
 
+## Demo / test data (`data/reservation_demo_data.xml` + `hooks.py`)
+- **XML** (`noupdate`): products, locations, lots, batches/lines, users, API token rows.
+- **Stock levels** are applied idempotently by `hooks.ensure_demo_stock()` from **`post_init_hook`** (new installs) and **`migrations/18.0.1.0.2/post-demo_stock.py`** (upgrades to 18.0.1.0.2+).
+
+### Products & inventory targets
+| XML template id | Scenario |
+|-----------------|----------|
+| `demo_pt_full` | 50 units @ main WH stock |
+| `demo_pt_partial` | 25 units @ main WH stock |
+| `demo_pt_empty` | No stock |
+| `demo_pt_shelf_only` | 12 units **only** on child location `demo_location_shelf` |
+| `demo_pt_lots` + `demo_lot_alpha` / `demo_lot_beta` | 18 units on **LOT-ALPHA** only (BETA has no quants) |
+
+### Users & API tokens (plaintext secrets — stored hashed)
+| Login / name | Groups | Bearer secret (if applicable) |
+|----------------|--------|-------------------------------|
+| `admin` | + Reservation Manager (demo) | `demo-reservation-api-token-change-me` (`demo_api_token`) |
+| `demo_res_user` / **Demo Reservation User** | Internal user, stock user, **Reservation User** only | `demo-res-user-api-token-change-me` (`demo_api_token_res_user`) |
+| — | Inactive token record | `inactive-token-never-valid` (`demo_api_token_inactive`, `active=False`) — expect 401 |
+
+### Batches (XML ids) — what to test
+| Batch xml:id | Intent |
+|--------------|--------|
+| `demo_batch_draft` | Draft → **Confirm** → **Allocate** (single full line) |
+| `demo_batch_partial` | Confirmed; one line **partial** vs 25 on hand |
+| `demo_batch_empty` | Confirmed; **not_available** |
+| `demo_batch_mixed` | One **Allocate**: lines → allocated / partial / not_available; batch **partial** |
+| `demo_batch_dual_full` | Two lines; after allocate → batch **allocated** |
+| `demo_batch_cancelled` | **Cancelled** batch + line |
+| `demo_batch_done` | **Done** + line already **allocated** (static snapshot) |
+| `demo_batch_lot_ok` | Preferred **ALPHA** + stock on ALPHA → allocates |
+| `demo_batch_lot_bad` | Preferred **BETA**, stock only on ALPHA → **not_available** |
+| `demo_batch_shelf_parent` | Line uses **parent** WH stock; qty on **child** shelf only (`child_of`) |
+| `demo_batch_prio_low` | **Low** priority, **draft**, two lines |
+| `demo_batch_urgent` | **Urgent** + **scheduled_date** |
+| `demo_batch_demo_user_owned` | Owned by `demo_res_user` — **record rule** / API ownership tests |
+
+To remove demo data from a dev database, delete the related `ir.model.data` rows or restore a backup.
+
+## Code reference (models & controllers)
+
+### `stock.reservation.batch`
+| Kind | Name | Role |
+|------|------|------|
+| Override | `create` | Assigns sequence `stock.reservation.batch` when `name` is `New`. |
+| Compute | `_compute_move_count` | Counts lines that have a `stock.move`. |
+| Button | `action_confirm` | Requires lines; sets batch `state` to `confirmed`. |
+| Button | `action_cancel` | Cancels non-allocated lines; batch `cancelled`. |
+| Button | `action_mark_done` | Sets batch `done`. |
+| Button | `action_allocate` → `_action_allocate_single` | Runs allocation loop; guards with `allocation_in_progress` and valid states. |
+| Core | `_allocate_line` | Walks `stock.quant` (FIFO by DB order or FEFO via Python sort when expiry lots exist); returns `allocated_qty` and first `lot_id` consumed. |
+| Core | `_get_quant_order` | Returns whether to apply FEFO (any quant with lot + expiration on this product/location). |
+| Core | `_compute_line_state` | Maps requested vs allocated → `not_available` / `partial` / `allocated`. |
+| Core | `_compute_batch_state` | Aggregates line states into batch `draft` / `confirmed` / `partial` / `allocated` / `cancelled`. |
+| Core | `_create_stock_move_for_line` | Creates `stock.move` from line location to `stock.stock_location_output` for allocated qty. |
+| Button | `action_view_moves` | Opens stock moves for all lines (smart button). |
+
+### `stock.reservation.line`
+| Kind | Name | Role |
+|------|------|------|
+| Constraint | `_check_allocated_qty` | Ensures `allocated_qty` ≤ `requested_qty`. |
+| SQL | *(constraints)* | `requested_qty > 0`, `allocated_qty >= 0`. |
+
+### `reservation.api.token`
+| Kind | Name | Role |
+|------|------|------|
+| Helper | `_hash_token` | SHA-256 hex digest of raw secret. |
+| Override | `create` / `write` | Hashes `token` field on store. |
+
+### HTTP (`controllers/api.py`)
+| Route | Method | Handler | Behavior |
+|-------|--------|---------|----------|
+| `/api/reservation/create` | POST JSON | `create_reservation` | Bearer auth; builds batch + optional `auto_confirm`. |
+| `/api/reservation/allocate` | POST JSON | `allocate_reservation` | Bearer auth; owner or manager; calls `action_allocate`. |
+| `/api/reservation/status/<batch_id>` | GET | `reservation_status` | JSON detail of batch and lines. |
+| *(helpers)* | | `_get_bearer_token`, `_authenticate`, `_json_error` | Authorization header parsing and token lookup (hashed match). |
+
 ## Security Model
 - Reservation users can access only their own batches and lines.
 - Reservation managers can access all records.

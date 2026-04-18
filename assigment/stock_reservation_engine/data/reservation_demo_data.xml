@@ -1,0 +1,337 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+        <!-- Admin: manager group for menus, allocation, API tokens -->
+        <record id="base.user_admin" model="res.users">
+            <field name="groups_id" eval="[(4, ref('stock_reservation_engine.group_stock_reservation_manager'))]"/>
+        </record>
+
+        <!-- Reservation User (ACL tests: sees own batches only) -->
+        <record id="partner_demo_reservation_user" model="res.partner">
+            <field name="name">Demo Reservation User</field>
+            <field name="email">demo.res.user@test.local</field>
+        </record>
+        <record id="user_demo_reservation" model="res.users">
+            <field name="name">Demo Reservation User</field>
+            <field name="login">demo_res_user</field>
+            <field name="password">demo_res_user</field>
+            <field name="partner_id" ref="partner_demo_reservation_user"/>
+            <field name="company_id" ref="base.main_company"/>
+            <field name="company_ids" eval="[(6, 0, [ref('base.main_company')])]"/>
+            <field name="groups_id" eval="[(6, 0, [ref('base.group_user'), ref('stock.group_stock_user'), ref('stock_reservation_engine.group_stock_reservation_user')])]"/>
+        </record>
+
+        <!-- Odoo 18 storable goods: consu + is_storable -->
+        <record id="demo_pt_full" model="product.template">
+            <field name="name">[DEMO] Reservation — full allocation</field>
+            <field name="categ_id" ref="product.product_category_all"/>
+            <field name="type">consu</field>
+            <field name="is_storable" eval="True"/>
+            <field name="tracking">none</field>
+            <field name="uom_id" ref="uom.product_uom_unit"/>
+            <field name="uom_po_id" ref="uom.product_uom_unit"/>
+        </record>
+        <record id="demo_pt_partial" model="product.template">
+            <field name="name">[DEMO] Reservation — partial allocation</field>
+            <field name="categ_id" ref="product.product_category_all"/>
+            <field name="type">consu</field>
+            <field name="is_storable" eval="True"/>
+            <field name="tracking">none</field>
+            <field name="uom_id" ref="uom.product_uom_unit"/>
+            <field name="uom_po_id" ref="uom.product_uom_unit"/>
+        </record>
+        <record id="demo_pt_empty" model="product.template">
+            <field name="name">[DEMO] Reservation — no stock</field>
+            <field name="categ_id" ref="product.product_category_all"/>
+            <field name="type">consu</field>
+            <field name="is_storable" eval="True"/>
+            <field name="tracking">none</field>
+            <field name="uom_id" ref="uom.product_uom_unit"/>
+            <field name="uom_po_id" ref="uom.product_uom_unit"/>
+        </record>
+
+        <!-- Stock only on child shelf (allocate from parent WH/Stock tests child_of domain) -->
+        <record id="demo_location_shelf" model="stock.location">
+            <field name="name">DEMO Shelf</field>
+            <field name="usage">internal</field>
+            <field name="company_id" ref="base.main_company"/>
+            <field name="location_id" model="stock.warehouse" eval="obj(ref('stock.warehouse0')).lot_stock_id.id"/>
+        </record>
+        <record id="demo_pt_shelf_only" model="product.template">
+            <field name="name">[DEMO] Reservation — shelf stock only</field>
+            <field name="categ_id" ref="product.product_category_all"/>
+            <field name="type">consu</field>
+            <field name="is_storable" eval="True"/>
+            <field name="tracking">none</field>
+            <field name="uom_id" ref="uom.product_uom_unit"/>
+            <field name="uom_po_id" ref="uom.product_uom_unit"/>
+        </record>
+
+        <!-- Lot tracking: inventory via hooks on LOT-ALPHA only -->
+        <record id="demo_pt_lots" model="product.template">
+            <field name="name">[DEMO] Reservation — lot tracked</field>
+            <field name="categ_id" ref="product.product_category_all"/>
+            <field name="type">consu</field>
+            <field name="is_storable" eval="True"/>
+            <field name="tracking">lot</field>
+            <field name="uom_id" ref="uom.product_uom_unit"/>
+            <field name="uom_po_id" ref="uom.product_uom_unit"/>
+        </record>
+        <record id="demo_lot_alpha" model="stock.lot">
+            <field name="name">DEMO-LOT-ALPHA</field>
+            <field name="product_id" model="product.template" eval="obj(ref('stock_reservation_engine.demo_pt_lots')).product_variant_ids[:1].id"/>
+            <field name="company_id" ref="base.main_company"/>
+        </record>
+        <record id="demo_lot_beta" model="stock.lot">
+            <field name="name">DEMO-LOT-BETA</field>
+            <field name="product_id" model="product.template" eval="obj(ref('stock_reservation_engine.demo_pt_lots')).product_variant_ids[:1].id"/>
+            <field name="company_id" ref="base.main_company"/>
+        </record>
+
+        <!-- === Batches (inventory applied by hooks.py + migration) === -->
+
+        <!-- 1 Draft -> Confirm -> Allocate -->
+        <record id="demo_batch_draft" model="stock.reservation.batch">
+            <field name="request_user_id" ref="base.user_admin"/>
+            <field name="company_id" ref="base.main_company"/>
+            <field name="state">draft</field>
+            <field name="priority">2</field>
+        </record>
+        <record id="demo_line_full" model="stock.reservation.line">
+            <field name="batch_id" ref="demo_batch_draft"/>
+            <field name="product_id" model="product.template" eval="obj(ref('stock_reservation_engine.demo_pt_full')).product_variant_ids[:1].id"/>
+            <field name="requested_qty">5</field>
+            <field name="location_id" model="stock.warehouse" eval="obj(ref('stock.warehouse0')).lot_stock_id.id"/>
+            <field name="note">Workflow: confirm then allocate → full.</field>
+        </record>
+
+        <!-- 2 Partial single line -->
+        <record id="demo_batch_partial" model="stock.reservation.batch">
+            <field name="request_user_id" ref="base.user_admin"/>
+            <field name="company_id" ref="base.main_company"/>
+            <field name="state">confirmed</field>
+            <field name="priority">3</field>
+        </record>
+        <record id="demo_line_partial" model="stock.reservation.line">
+            <field name="batch_id" ref="demo_batch_partial"/>
+            <field name="product_id" model="product.template" eval="obj(ref('stock_reservation_engine.demo_pt_partial')).product_variant_ids[:1].id"/>
+            <field name="requested_qty">40</field>
+            <field name="location_id" model="stock.warehouse" eval="obj(ref('stock.warehouse0')).lot_stock_id.id"/>
+            <field name="note">25 on hand → partial line / partial batch.</field>
+        </record>
+
+        <!-- 3 No stock -->
+        <record id="demo_batch_empty" model="stock.reservation.batch">
+            <field name="request_user_id" ref="base.user_admin"/>
+            <field name="company_id" ref="base.main_company"/>
+            <field name="state">confirmed</field>
+            <field name="priority">1</field>
+        </record>
+        <record id="demo_line_empty" model="stock.reservation.line">
+            <field name="batch_id" ref="demo_batch_empty"/>
+            <field name="product_id" model="product.template" eval="obj(ref('stock_reservation_engine.demo_pt_empty')).product_variant_ids[:1].id"/>
+            <field name="requested_qty">10</field>
+            <field name="location_id" model="stock.warehouse" eval="obj(ref('stock.warehouse0')).lot_stock_id.id"/>
+            <field name="note">No inventory → not_available.</field>
+        </record>
+
+        <!-- 4 Mixed: one allocate → allocated + partial + not_available lines -->
+        <record id="demo_batch_mixed" model="stock.reservation.batch">
+            <field name="request_user_id" ref="base.user_admin"/>
+            <field name="company_id" ref="base.main_company"/>
+            <field name="state">confirmed</field>
+            <field name="priority">2</field>
+        </record>
+        <record id="demo_line_mixed_a" model="stock.reservation.line">
+            <field name="batch_id" ref="demo_batch_mixed"/>
+            <field name="product_id" model="product.template" eval="obj(ref('stock_reservation_engine.demo_pt_full')).product_variant_ids[:1].id"/>
+            <field name="requested_qty">3</field>
+            <field name="location_id" model="stock.warehouse" eval="obj(ref('stock.warehouse0')).lot_stock_id.id"/>
+            <field name="note">Mixed batch — full line.</field>
+        </record>
+        <record id="demo_line_mixed_b" model="stock.reservation.line">
+            <field name="batch_id" ref="demo_batch_mixed"/>
+            <field name="product_id" model="product.template" eval="obj(ref('stock_reservation_engine.demo_pt_partial')).product_variant_ids[:1].id"/>
+            <field name="requested_qty">99</field>
+            <field name="location_id" model="stock.warehouse" eval="obj(ref('stock.warehouse0')).lot_stock_id.id"/>
+            <field name="note">Mixed batch — partial line.</field>
+        </record>
+        <record id="demo_line_mixed_c" model="stock.reservation.line">
+            <field name="batch_id" ref="demo_batch_mixed"/>
+            <field name="product_id" model="product.template" eval="obj(ref('stock_reservation_engine.demo_pt_empty')).product_variant_ids[:1].id"/>
+            <field name="requested_qty">2</field>
+            <field name="location_id" model="stock.warehouse" eval="obj(ref('stock.warehouse0')).lot_stock_id.id"/>
+            <field name="note">Mixed batch — not_available line.</field>
+        </record>
+
+        <!-- 5 Two lines both fully satisfied → batch allocated -->
+        <record id="demo_batch_dual_full" model="stock.reservation.batch">
+            <field name="request_user_id" ref="base.user_admin"/>
+            <field name="company_id" ref="base.main_company"/>
+            <field name="state">confirmed</field>
+            <field name="priority">2</field>
+        </record>
+        <record id="demo_line_dual_1" model="stock.reservation.line">
+            <field name="batch_id" ref="demo_batch_dual_full"/>
+            <field name="product_id" model="product.template" eval="obj(ref('stock_reservation_engine.demo_pt_full')).product_variant_ids[:1].id"/>
+            <field name="requested_qty">4</field>
+            <field name="location_id" model="stock.warehouse" eval="obj(ref('stock.warehouse0')).lot_stock_id.id"/>
+        </record>
+        <record id="demo_line_dual_2" model="stock.reservation.line">
+            <field name="batch_id" ref="demo_batch_dual_full"/>
+            <field name="product_id" model="product.template" eval="obj(ref('stock_reservation_engine.demo_pt_full')).product_variant_ids[:1].id"/>
+            <field name="requested_qty">6</field>
+            <field name="location_id" model="stock.warehouse" eval="obj(ref('stock.warehouse0')).lot_stock_id.id"/>
+            <field name="note">Same product two lines — both allocated → batch allocated.</field>
+        </record>
+
+        <!-- 6 Cancelled -->
+        <record id="demo_batch_cancelled" model="stock.reservation.batch">
+            <field name="request_user_id" ref="base.user_admin"/>
+            <field name="company_id" ref="base.main_company"/>
+            <field name="state">cancelled</field>
+            <field name="priority">1</field>
+        </record>
+        <record id="demo_line_cancel_a" model="stock.reservation.line">
+            <field name="batch_id" ref="demo_batch_cancelled"/>
+            <field name="product_id" model="product.template" eval="obj(ref('stock_reservation_engine.demo_pt_full')).product_variant_ids[:1].id"/>
+            <field name="requested_qty">2</field>
+            <field name="location_id" model="stock.warehouse" eval="obj(ref('stock.warehouse0')).lot_stock_id.id"/>
+            <field name="state">cancelled</field>
+        </record>
+
+        <!-- 7 Done (static UI state; moves may be absent in demo) -->
+        <record id="demo_batch_done" model="stock.reservation.batch">
+            <field name="request_user_id" ref="base.user_admin"/>
+            <field name="company_id" ref="base.main_company"/>
+            <field name="state">done</field>
+            <field name="priority">1</field>
+        </record>
+        <record id="demo_line_done_1" model="stock.reservation.line">
+            <field name="batch_id" ref="demo_batch_done"/>
+            <field name="product_id" model="product.template" eval="obj(ref('stock_reservation_engine.demo_pt_full')).product_variant_ids[:1].id"/>
+            <field name="requested_qty">2</field>
+            <field name="allocated_qty">2</field>
+            <field name="location_id" model="stock.warehouse" eval="obj(ref('stock.warehouse0')).lot_stock_id.id"/>
+            <field name="state">allocated</field>
+            <field name="note">Done batch snapshot for UI/tests.</field>
+        </record>
+
+        <!-- 8 Preferred lot matches stock (LOT-ALPHA) -->
+        <record id="demo_batch_lot_ok" model="stock.reservation.batch">
+            <field name="request_user_id" ref="base.user_admin"/>
+            <field name="company_id" ref="base.main_company"/>
+            <field name="state">confirmed</field>
+            <field name="priority">2</field>
+        </record>
+        <record id="demo_line_lot_ok" model="stock.reservation.line">
+            <field name="batch_id" ref="demo_batch_lot_ok"/>
+            <field name="product_id" model="product.template" eval="obj(ref('stock_reservation_engine.demo_pt_lots')).product_variant_ids[:1].id"/>
+            <field name="requested_qty">4</field>
+            <field name="location_id" model="stock.warehouse" eval="obj(ref('stock.warehouse0')).lot_stock_id.id"/>
+            <field name="lot_id" ref="demo_lot_alpha"/>
+            <field name="note">Preferred lot has stock.</field>
+        </record>
+
+        <!-- 9 Preferred lot has no stock (all on ALPHA) -->
+        <record id="demo_batch_lot_bad" model="stock.reservation.batch">
+            <field name="request_user_id" ref="base.user_admin"/>
+            <field name="company_id" ref="base.main_company"/>
+            <field name="state">confirmed</field>
+            <field name="priority">2</field>
+        </record>
+        <record id="demo_line_lot_bad" model="stock.reservation.line">
+            <field name="batch_id" ref="demo_batch_lot_bad"/>
+            <field name="product_id" model="product.template" eval="obj(ref('stock_reservation_engine.demo_pt_lots')).product_variant_ids[:1].id"/>
+            <field name="requested_qty">5</field>
+            <field name="location_id" model="stock.warehouse" eval="obj(ref('stock.warehouse0')).lot_stock_id.id"/>
+            <field name="lot_id" ref="demo_lot_beta"/>
+            <field name="note">Preferred BETA has no quants → not_available.</field>
+        </record>
+
+        <!-- 10 Parent location finds stock on child shelf -->
+        <record id="demo_batch_shelf_parent" model="stock.reservation.batch">
+            <field name="request_user_id" ref="base.user_admin"/>
+            <field name="company_id" ref="base.main_company"/>
+            <field name="state">confirmed</field>
+            <field name="priority">2</field>
+        </record>
+        <record id="demo_line_shelf_parent" model="stock.reservation.line">
+            <field name="batch_id" ref="demo_batch_shelf_parent"/>
+            <field name="product_id" model="product.template" eval="obj(ref('stock_reservation_engine.demo_pt_shelf_only')).product_variant_ids[:1].id"/>
+            <field name="requested_qty">8</field>
+            <field name="location_id" model="stock.warehouse" eval="obj(ref('stock.warehouse0')).lot_stock_id.id"/>
+            <field name="note">Qty only on child shelf — child_of lookup.</field>
+        </record>
+
+        <!-- 11 Low priority draft multi-line -->
+        <record id="demo_batch_prio_low" model="stock.reservation.batch">
+            <field name="request_user_id" ref="base.user_admin"/>
+            <field name="company_id" ref="base.main_company"/>
+            <field name="state">draft</field>
+            <field name="priority">0</field>
+        </record>
+        <record id="demo_line_prio_l1" model="stock.reservation.line">
+            <field name="batch_id" ref="demo_batch_prio_low"/>
+            <field name="product_id" model="product.template" eval="obj(ref('stock_reservation_engine.demo_pt_full')).product_variant_ids[:1].id"/>
+            <field name="requested_qty">1</field>
+            <field name="location_id" model="stock.warehouse" eval="obj(ref('stock.warehouse0')).lot_stock_id.id"/>
+        </record>
+        <record id="demo_line_prio_l2" model="stock.reservation.line">
+            <field name="batch_id" ref="demo_batch_prio_low"/>
+            <field name="product_id" model="product.template" eval="obj(ref('stock_reservation_engine.demo_pt_partial')).product_variant_ids[:1].id"/>
+            <field name="requested_qty">2</field>
+            <field name="location_id" model="stock.warehouse" eval="obj(ref('stock.warehouse0')).lot_stock_id.id"/>
+        </record>
+
+        <!-- 12 Urgent + scheduled -->
+        <record id="demo_batch_urgent" model="stock.reservation.batch">
+            <field name="request_user_id" ref="base.user_admin"/>
+            <field name="company_id" ref="base.main_company"/>
+            <field name="state">confirmed</field>
+            <field name="priority">3</field>
+            <field name="scheduled_date" eval="DateTime.now() + timedelta(days=5)"/>
+        </record>
+        <record id="demo_line_urgent" model="stock.reservation.line">
+            <field name="batch_id" ref="demo_batch_urgent"/>
+            <field name="product_id" model="product.template" eval="obj(ref('stock_reservation_engine.demo_pt_full')).product_variant_ids[:1].id"/>
+            <field name="requested_qty">2</field>
+            <field name="location_id" model="stock.warehouse" eval="obj(ref('stock.warehouse0')).lot_stock_id.id"/>
+        </record>
+
+        <!-- 13 Owned by reservation user (record rules) -->
+        <record id="demo_batch_demo_user_owned" model="stock.reservation.batch">
+            <field name="request_user_id" ref="user_demo_reservation"/>
+            <field name="company_id" ref="base.main_company"/>
+            <field name="state">confirmed</field>
+            <field name="priority">2</field>
+        </record>
+        <record id="demo_line_demo_user_owned" model="stock.reservation.line">
+            <field name="batch_id" ref="demo_batch_demo_user_owned"/>
+            <field name="product_id" model="product.template" eval="obj(ref('stock_reservation_engine.demo_pt_full')).product_variant_ids[:1].id"/>
+            <field name="requested_qty">3</field>
+            <field name="location_id" model="stock.warehouse" eval="obj(ref('stock.warehouse0')).lot_stock_id.id"/>
+            <field name="note">Log in as demo_res_user → visible; admin sees all.</field>
+        </record>
+
+        <!-- API tokens -->
+        <record id="demo_api_token" model="reservation.api.token">
+            <field name="name">Demo reservation API (admin)</field>
+            <field name="user_id" ref="base.user_admin"/>
+            <field name="token">demo-reservation-api-token-change-me</field>
+            <field name="active" eval="True"/>
+        </record>
+        <record id="demo_api_token_res_user" model="reservation.api.token">
+            <field name="name">Demo reservation API (reservation user)</field>
+            <field name="user_id" ref="user_demo_reservation"/>
+            <field name="token">demo-res-user-api-token-change-me</field>
+            <field name="active" eval="True"/>
+        </record>
+        <record id="demo_api_token_inactive" model="reservation.api.token">
+            <field name="name">Inactive token (negative auth tests)</field>
+            <field name="user_id" ref="base.user_admin"/>
+            <field name="token">inactive-token-never-valid</field>
+            <field name="active" eval="False"/>
+        </record>
+    </data>
+</odoo>
