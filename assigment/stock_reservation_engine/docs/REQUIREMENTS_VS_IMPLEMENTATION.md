@@ -43,7 +43,7 @@ Legend: **Done** = implemented and usable | **Done (extended)** = requirement me
 | `POST /api/reservation/allocate` | **Done** | `allocate_reservation` |
 | `GET /api/reservation/status/<id>` | **Done** | `reservation_status` |
 | Token-based auth (Bearer) | **Done** | `_authenticate`, `reservation.api.token` |
-| Clear JSON errors | **Done** | Consistent **`status`** / **`message`** (and HTTP status on GET). **Note:** standardized application error **codes** (e.g. `ERR_XXX`) are not defined—that is an optional hardening layer, not absence of error handling. |
+| Clear JSON errors | **Done** | Consistent **`status`** / **`message`** / **`code`** (e.g. `ERR_UNAUTHORIZED`, `ERR_VALIDATION`) on JSON-RPC bodies; GET routes use HTTP status plus the same payload shape. |
 | Clean request/response | **Done** | Structured payloads; see README API section |
 
 ### UI
@@ -59,7 +59,7 @@ Legend: **Done** = implemented and usable | **Done (extended)** = requirement me
 |-------------|--------|------------------|
 | Users see **own** reservations | **Done** | `security/reservation_security.xml` record rules on batch and lines |
 | Managers see **all** | **Done** | Manager group + rules / full access where applicable |
-| Allocation restricted to **authorized** users | **Partial** *(layered)* | **UI:** `Allocate` / `Mark Done` limited to **Reservation Manager** via `groups=` on form buttons. **API:** `allocate` / `status` enforce **batch owner or manager** in Python (`user.has_group(...)` / ownership). **ORM/RPC:** `action_allocate` does **not** repeat the manager check—users with write access who bypass the UI could invoke the method; tightening would mean a `has_group` (or sudo+with_user) guard on the server method. |
+| Allocation restricted to **authorized** users | **Done** | **Server-side:** `_check_allocate_authorization` on `action_allocate` raises **`AccessError`** unless the user is **Reservation Manager** (`has_group`) **or** the batch **owner** (`request_user_id`). Applies to RPC, buttons, and API paths that call `action_allocate`. UI button groups may further limit visibility; enforcement is not UI-only. |
 
 ---
 
@@ -68,7 +68,7 @@ Legend: **Done** = implemented and usable | **Done (extended)** = requirement me
 | Deliverable | Status | Where |
 |-------------|--------|--------|
 | **Sprint plan** (3 days, priorities, what was **not** done) | **Done** | `README.md` — “Sprint Plan”, “What I intentionally did NOT implement” |
-| **Tests** (3–5+ cases: allocation, partial, no stock) | **Done** | `tests/test_reservation.py`: full, partial, no stock, cancel batch, confirm without lines; **FEFO-oriented test** runs when expiration metadata exists and skips otherwise—execution is **environment-dependent**, not a logic gap. |
+| **Tests** (3–5+ cases: allocation, partial, no stock) | **Done** | `tests/test_reservation.py`: full, partial, no stock, cancel batch, confirm without lines; allocation auth denial; **FEFO-oriented test** runs when expiration metadata exists and skips otherwise—execution is **environment-dependent**, not a logic gap. **`tests/test_reservation_http.py`** (`HttpCase`): minimal **`/api/reservation/create`** unauthorized + Bearer success (with `cr.commit()` for worker visibility). |
 | **Performance** (N+1, critical queries, scaling, complexity) | **Done** | `README.md` — “Performance Strategy”, “Critical query” |
 | **Database** (indexes, constraints) | **Done** | `README.md` — “Database Design”; ORM indexes on models; SQL constraints on lines |
 | **Concurrency** (risks + proposed mitigation, **design level**) | **Done (design-level, as per assignment)** | `README.md` — “Concurrency Strategy”; code adds **`allocation_in_progress`**, state checks, and skip-for-alocated-lines—**application-level** guards aligned with the brief’s “explain, do not fully lock” scope. Row-level DB locking remains **future hardening**, not a failed requirement. |
@@ -97,7 +97,7 @@ Legend: **Done** = implemented and usable | **Done (extended)** = requirement me
 | Picking generation from moves | **Missing** (explicitly deferred in README) |
 | Profiling / timings in logs | **Partial** (INFO around allocation; no structured timings) |
 | Kanban / dashboard | **Missing** |
-| Advanced API (versioning, **machine-readable error codes**) | **Partial** (JSON structure and messages are in place; standardized codes/version prefix not implemented) |
+| Advanced API (versioning, machine-readable error codes) | **Partial** (basic **`code`** strings on errors; versioning / prefixes not implemented) |
 | Test automation plan | **Partial** (Odoo tests in-repo; CI pipeline not documented) |
 
 ---
@@ -121,8 +121,7 @@ Legend: **Done** = implemented and usable | **Done (extended)** = requirement me
 **Medium**
 
 4. **Picking** or delivery flow from generated moves if the business wants full warehouse documents.
-5. **HTTP-level tests** for `/api/reservation/*` (auth, 403/404 paths).
-6. Optional **`has_group`** on `action_allocate` if all allocation must be manager-only at the RPC layer too.
+5. Extend **HTTP-level tests** (`/api/reservation/allocate`, `/status/` 403/404) if regression coverage for those routes is needed.
 
 **Nice-to-have**
 

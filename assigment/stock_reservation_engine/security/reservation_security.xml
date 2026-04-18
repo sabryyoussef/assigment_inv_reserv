@@ -24,6 +24,21 @@
         <field name="domain_force">[('batch_id.request_user_id', '=', user.id)]</field>
     </record>
 
+    <!-- Managers imply reservation user; without these rules the user-only domain would still restrict them. -->
+    <record id="stock_reservation_batch_manager_rule" model="ir.rule">
+        <field name="name">Reservation batches: managers see all</field>
+        <field name="model_id" ref="model_stock_reservation_batch"/>
+        <field name="groups" eval="[(4, ref('group_stock_reservation_manager'))]"/>
+        <field name="domain_force">[(1, '=', 1)]</field>
+    </record>
+
+    <record id="stock_reservation_line_manager_rule" model="ir.rule">
+        <field name="name">Reservation lines: managers see all</field>
+        <field name="model_id" ref="model_stock_reservation_line"/>
+        <field name="groups" eval="[(4, ref('group_stock_reservation_manager'))]"/>
+        <field name="domain_force">[(1, '=', 1)]</field>
+    </record>
+
     <record id="reservation_api_token_manager_rule" model="ir.rule">
         <field name="name">Reservation API tokens: manager only</field>
         <field name="model_id" ref="model_reservation_api_token"/>
