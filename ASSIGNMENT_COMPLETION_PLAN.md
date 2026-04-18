@@ -17,15 +17,16 @@ Close the remaining gaps between the delivered module and the original assignmen
 - Stock move generation and picking linkage
 - API endpoints with bearer-token authentication
 - Security rules for user-owned vs manager-wide access
+- UI authorization aligned for reservation allocation
+- Concurrency protection strengthened with row-level NOWAIT locking
+- API validation and response handling hardened
 - README, requirement mapping, and test report documentation
 - Automated ORM and HTTP tests
 
 ### Remaining gaps
-- UI permission mismatch on the Allocate button
-- Concurrency protection is documented but not fully implemented at DB level
-- API hardening is still basic
-- Dashboard is manually verified only
-- Final submission still needs a strict audit against the mandatory README and engineering checkpoints
+- Dashboard is still primarily manually verified
+- Final performance and database evidence should be reviewed one more time for submission polish
+- Final README and reviewer checklist polish is still pending
 
 ### Additional assignment-verification items
 Even where the feature already exists, the final delivery should explicitly prove:
@@ -41,7 +42,7 @@ Even where the feature already exists, the final delivery should explicitly prov
 ## Phase 1 — Finish the visible assignment gap
 Priority: High
 Estimated effort: 30–60 minutes
-Status: Implementation applied on the current branch; runtime validation pending module upgrade/reload
+Status: Completed on the current branch
 
 ### Task 1: Align UI with backend authorization
 Problem:
@@ -64,7 +65,7 @@ Acceptance criteria:
 ## Phase 2 — Strengthen concurrency handling
 Priority: Medium to High
 Estimated effort: 2–4 hours
-Status: Core NOWAIT locking implementation added on the current branch; full load validation can be done next
+Status: Completed on the current branch with lock-aware handling and regression coverage
 
 ### Task 2: Add safer allocation under contention
 Problem:
@@ -93,6 +94,7 @@ Acceptance criteria:
 ## Phase 3 — Improve API robustness
 Priority: Medium
 Estimated effort: 1–2 hours
+Status: Completed on the current branch with stronger validation and response consistency
 
 ### Task 3: Harden the HTTP API
 Target file:
@@ -171,12 +173,9 @@ These are not required to satisfy the assignment, but can improve polish:
 ---
 
 ## Recommended execution order
-1. Fix the Allocate button visibility mismatch
-2. Re-run relevant authorization and allocation tests
-3. Implement concurrency hardening if time allows
-4. Verify the performance and database evidence against the assignment wording
-5. Update docs to reflect the final delivered behavior
-6. Do one final submission review against the original assignment
+1. Verify the performance and database evidence against the assignment wording
+2. Update docs to reflect the final delivered behavior
+3. Do one final submission review against the original assignment
 
 ---
 

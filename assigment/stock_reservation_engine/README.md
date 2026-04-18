@@ -215,6 +215,8 @@ No **`TransactionCase`** / **`HttpCase`** targets the dashboard views. Validate 
 
 `Authorization: Bearer <token>` — manage tokens under **Reservation API Tokens**.
 
+The API accepts the bearer scheme case-insensitively and returns clearer validation responses for malformed line payloads, invalid quantities, and malformed batch identifiers.
+
 ---
 
 ## Demo reference tables
