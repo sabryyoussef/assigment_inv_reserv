@@ -8,7 +8,32 @@ Designed for scenarios where multiple demands may compete for stock before stand
 
 ## Screenshots
 
-Assets live under **`static/description/screenshots/`**. Capture tooling: **`tools/screenshots/`** (`npm run capture`, `npm run walkthrough`). Index: [static/description/screenshots/README.md](static/description/screenshots/README.md).
+The functional walkthrough screenshots for this module are available in **`docs/screenshots_guide/`**. The full mapping is documented in [docs/screenshots_guide/SCREENSHOTS_INDEX.md](docs/screenshots_guide/SCREENSHOTS_INDEX.md).
+
+### Screenshot guide map
+
+| Area | Screenshot |
+| ---- | ---------- |
+| Login and landing page | [01-login-page.png](docs/screenshots_guide/01-login-page.png), [02-after-login-home.png](docs/screenshots_guide/02-after-login-home.png) |
+| Module search and inventory setup | [03-apps-search-stock-reservation-engine.png](docs/screenshots_guide/03-apps-search-stock-reservation-engine.png), [04-inventory-configuration-settings.png](docs/screenshots_guide/04-inventory-configuration-settings.png) |
+| Product and lot setup | [05-inventory-products-list.png](docs/screenshots_guide/05-inventory-products-list.png), [06-products-filtered-demo-product.png](docs/screenshots_guide/06-products-filtered-demo-product.png), [07-product-variants-list.png](docs/screenshots_guide/07-product-variants-list.png), [08-lots-serial-numbers.png](docs/screenshots_guide/08-lots-serial-numbers.png) |
+| Reservation dashboard and batches | [09-stock-reservations-dashboard.png](docs/screenshots_guide/09-stock-reservations-dashboard.png), [10-reservation-batches-list.png](docs/screenshots_guide/10-reservation-batches-list.png) |
+| Allocation result, moves, and transfers | [11-reservation-batch-form-after-allocate.png](docs/screenshots_guide/11-reservation-batch-form-after-allocate.png), [12-stock-moves-from-batch.png](docs/screenshots_guide/12-stock-moves-from-batch.png), [13-transfers-from-batch.png](docs/screenshots_guide/13-transfers-from-batch.png) |
+| New batch form and API tokens | [14-new-reservation-batch-form.png](docs/screenshots_guide/14-new-reservation-batch-form.png), [15-api-tokens-list.png](docs/screenshots_guide/15-api-tokens-list.png) |
+
+### Preview highlights
+
+**Reservation Dashboard**
+
+![Reservation Dashboard](docs/screenshots_guide/09-stock-reservations-dashboard.png)
+
+**Batch after allocation**
+
+![Reservation Batch After Allocate](docs/screenshots_guide/11-reservation-batch-form-after-allocate.png)
+
+**Generated internal transfers**
+
+![Transfers From Batch](docs/screenshots_guide/13-transfers-from-batch.png)
 
 ## Scope delivered
 
