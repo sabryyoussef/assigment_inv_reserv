@@ -129,6 +129,19 @@ Under **Inventory → Stock Reservations** (visible to reservation user or manag
 6. **Allocate** again on a **partial** batch (requested qty &gt; on hand): **picking count** and **picking ids** must stay stable (no duplicate picking for already-linked moves).
 7. **Dashboard:** **Stock Reservations → Dashboard** — confirm **graph** shows bars by **state** (and stacked **product**); switch to **pivot**; check **requested** vs **allocated** for products and states (filters in search apply to both views).
 
+## Final reviewer checklist
+
+Use this quick checklist during assignment review:
+
+- Module installs and upgrades cleanly
+- Reservation batches can be created, confirmed, and allocated
+- FEFO or FIFO behavior works depending on lot-expiry data availability
+- Partial and no-stock outcomes are visible on reservation lines
+- Stock moves and internal transfers are linked correctly
+- API create, allocate, and status endpoints respond with the expected JSON structure
+- Security rules restrict regular users to their own records while managers can access all
+- README sections cover architecture, sprint plan, performance, database design, concurrency, testing, and limitations
+
 ---
 
 ## Testing
@@ -266,9 +279,35 @@ The API accepts the bearer scheme case-insensitively and returns clearer validat
 
 ## Performance strategy
 
-- Per line: one **`stock.quant`** search (FEFO may sort in Python when expiry applies).
-- Logging: **`Allocation line timing`** (`elapsed_ms`), **`Finished allocation`** (`total_elapsed_ms`).
-- Scaling: possible future batching of lines by product/location to reuse quant reads.
+### N+1 avoidance
+
+- The allocation path performs **one `stock.quant` lookup per reservation line**, not one query per quant row.
+- Candidate quants are fetched in a single ORM search, then iterated in memory to compute available quantity and FEFO/FIFO order.
+- Move and picking linkage rely on Odoo prefetching plus recordset operations such as **`mapped('move_id')`**, avoiding extra query loops for each line.
+- The API token check uses a single indexed lookup on the hashed token value.
+
+### Critical queries
+
+1. **`stock.quant`** search on **`product_id`**, **`location_id child_of`**, **`company_id`**, and optional **`lot_id`**
+2. Internal picking type fallback lookup on **`stock.picking.type`**
+3. Hashed token lookup on **`reservation.api.token`**
+
+These are the hot paths under load; the added indexes and deterministic domains keep them predictable.
+
+### Sample runtime evidence
+
+The module logs allocation timing at runtime:
+
+```text
+INFO stock_reservation_engine.models.reservation_batch: Allocation line timing batch=RES00031 line_id=33 product_id=59 elapsed_ms=13.03 allocated_qty=2.0
+INFO stock_reservation_engine.models.reservation_batch: Finished allocation for reservation batch RES00031 state=allocated lines=1 moves=1 total_elapsed_ms=13.30
+```
+
+### Scaling reasoning
+
+- For **L** reservation lines and **Q** candidate quants per line, the dominant work is approximately **one quant search per line** plus in-memory scanning of the matching quant recordset.
+- FIFO flow is roughly linear in the candidate quant count after the search; FEFO adds an in-memory sort for the matched quants when expiry metadata exists.
+- A future optimization would batch lines by **`(product_id, location_id)`** to reuse quant reads for very large reservation batches.
 
 ---
 
@@ -284,6 +323,7 @@ The API accepts the bearer scheme case-insensitively and returns clearer validat
 | `stock.reservation.line` | `batch_id` | B-tree | One2many join; cascade |
 | `stock.reservation.line` | `product_id` | B-tree | Quant allocation and lookups |
 | `stock.reservation.line` | `location_id` | B-tree | Allocation domain uses `child_of` on this field |
+| `stock.reservation.line` | `lot_id` | B-tree | Preferred-lot filtering and FEFO-related lot targeting |
 | `stock.reservation.line` | `state` | B-tree | Dashboard filters and aggregation |
 | `stock.reservation.line` | `company_id` (related, stored) | B-tree | Cross-company filtering |
 | `stock.reservation.line` | `request_user_id` (related, stored) | B-tree | Aligns with line record rules |
