@@ -2,7 +2,7 @@
 
 ## Overview
 
-Custom reservation and allocation on top of Odoo Inventory: batches and lines, proactive allocation from `stock.quant`, FEFO when lot expiration exists (otherwise FIFO), generation of `stock.move` records, and **internal transfer** `stock.picking` documents grouped from those moves. Optional JSON HTTP API with Bearer tokens.
+Custom reservation and allocation on top of Odoo Inventory: **`stock.reservation.batch`** / **`stock.reservation.line`** models; allocation from **`stock.quant`** with **FEFO** when lot expiration exists (otherwise **FIFO**); **`stock.move`** generation; **internal transfer** **`stock.picking`** creation grouped from moves; optional **JSON HTTP API** with Bearer tokens; security groups and record rules; install-ready **demo inventory** via XML and **`hooks.ensure_demo_stock`**; and a lightweight **Reservation Dashboard** (native **Graph** + **Pivot** on reservation lines for reporting visibility).
 
 Designed for scenarios where multiple demands may compete for stock before standard fulfillment runs.
 
@@ -20,7 +20,8 @@ Assets live under **`static/description/screenshots/`**. Capture tooling: **`too
 - HTTP API: `/api/reservation/create`, `/api/reservation/allocate`, `/api/reservation/status/<id>`
 - Security groups, record rules, server-side allocate authorization
 - Demo XML + **`hooks.ensure_demo_stock`** (post-init + migrations)
-- Tests: **`TransactionCase`** (allocation paths, auth, moves, pickings, idempotency); **`HttpCase`** (API routes)
+- **Reservation Dashboard**: **`stock.reservation.line`** graph (bar, state / product, requested vs allocated measures) and pivot (product × state); menu **Inventory → Stock Reservations → Dashboard**
+- Tests: **`TransactionCase`** (allocation paths, auth, moves, pickings, idempotency); **`HttpCase`** (API routes). Dashboard is **not** covered by automated tests (manual verification only).
 - **`tools/qa_full_validation.py`** (shell): seven ORM scenarios → **`TEST_EXECUTION_REPORT.md`**
 
 ---
@@ -60,6 +61,21 @@ After **`action_allocate`** completes, **`_generate_pickings_from_allocated_move
 
 ---
 
+## Reservation dashboard
+
+Reporting uses **native Odoo** views on **`stock.reservation.line`** (no custom JavaScript, no extra models).
+
+| View | Purpose |
+| ---- | ------- |
+| **Graph** | Stacked **bar** chart: **`state`** and **`product_id`** as dimensions; measures **`requested_qty`** and **`allocated_qty`**. Supports quick reading of **state distribution** and **requested vs allocated** volumes; search filters include Allocated / Partial / Not Available. |
+| **Pivot** | Rows **`product_id`**, columns **`state`**, measures **`requested_qty`** and **`allocated_qty`** — **product-level** breakdown aligned with line records. |
+
+**Menu:** **Inventory → Stock Reservations → Dashboard** (window title **Reservation Dashboard**). Default mode is **graph**, then **pivot** via the view switcher. Same record rules apply as elsewhere (users see own lines; managers see all).
+
+Intended as a **lightweight reviewer-facing** layer for demos and assignments; not a substitute for full BI.
+
+---
+
 ## Demo environment
 
 > The module installs a ready-to-use demo environment with **no manual** warehouse or product setup required for the shipped scenarios (after install / hook run).
@@ -84,9 +100,22 @@ After **`action_allocate`** completes, **`_generate_pickings_from_allocated_move
 4. **Allocate** (UI or API): engine walks **`stock.quant`**, updates **`allocated_qty`** and line state.
 5. For lines with **`allocated_qty > 0`**, create or refresh **`stock.move`** (destination = staging rule above).
 6. **Generate pickings**: group moves without **`picking_id`**; create internal **Transfers**, confirm, link to **`picking_ids`**.
-7. In Inventory, open the **Transfer**, optional **Check Availability**, then **Validate** when executing the physical move.
+7. In Inventory, open the **Transfer** when needed; optional **Check Availability**, then **Validate** to post stock moves.
+8. Open **Stock Reservations → Dashboard** to review **line-level** outcomes (states, requested vs allocated, product breakdown in pivot).
 
 API **status** and existing integration points are unchanged.
+
+---
+
+## UI and navigation
+
+Under **Inventory → Stock Reservations** (visible to reservation user or manager groups):
+
+| Menu | Opens |
+| ---- | ----- |
+| **Dashboard** | **`stock.reservation.line`** — **Reservation Dashboard** action (**graph**, **pivot**). Lines are edited on the batch form; there is no separate “Reservation Lines” top-level menu. |
+| **Reservation Batches** | Batch list/form with lines embedded in the batch **notebook**. |
+| **API Tokens** | Manager-only; Bearer tokens for JSON API. |
 
 ---
 
@@ -98,6 +127,7 @@ API **status** and existing integration points are unchanged.
 4. **Confirm**, then **Allocate**.
 5. On the batch form, open **Transfers** — expect at least one internal transfer when stock was allocated; **`origin`** matches batch name.
 6. **Allocate** again on a **partial** batch (requested qty &gt; on hand): **picking count** and **picking ids** must stay stable (no duplicate picking for already-linked moves).
+7. **Dashboard:** **Stock Reservations → Dashboard** — confirm **graph** shows bars by **state** (and stacked **product**); switch to **pivot**; check **requested** vs **allocated** for products and states (filters in search apply to both views).
 
 ---
 
@@ -127,6 +157,10 @@ JSON-RPC **`POST`** to **`type='json'`** routes and **`GET`** status with **`Aut
 
 Pipe into **`odoo-bin shell`** (same database as the server). Runs **`ensure_demo_stock`**, then **seven** scenarios: full allocation, partial, no stock, FEFO, child locations, **re-allocate idempotency** (partial batch), multi-line mixed. Asserts picking linkage where applicable. Writes **`TEST_EXECUTION_REPORT.md`** at module root.
 
+### Dashboard
+
+No **`TransactionCase`** / **`HttpCase`** targets the dashboard views. Validate manually using **How to verify** step 7.
+
 ---
 
 ## Known limitations
@@ -140,6 +174,7 @@ Pipe into **`odoo-bin shell`** (same database as the server). Runs **`ensure_dem
 - No UoM conversion on lines (product UoM only).
 - API: no built-in rate limiting; token stored as hash only.
 - **`sudo()`** on some API helpers for token resolution; **`action_allocate`** runs **`with_user`** authenticated user.
+- **Dashboard:** standard **graph/pivot** only — no custom KPI widgets or JS dashboards; scoped for fast reviewer visibility, not full analytics.
 
 ---
 
@@ -237,8 +272,38 @@ Pipe into **`odoo-bin shell`** (same database as the server). Runs **`ensure_dem
 
 ## Database design
 
-- Indexes: relies on core **`stock.quant`** / line foreign keys; see model definitions.
-- Constraints: **`requested_qty > 0`**, **`allocated_qty`**, **`allocated_qty ≤ requested_qty`**.
+### Indexes
+
+| Model | Field | Type | Reason |
+| --- | --- | --- | --- |
+| `stock.reservation.batch` | `request_user_id` | B-tree | Record rule filter `[('request_user_id', '=', user.id)]` on user-scoped access |
+| `stock.reservation.batch` | `company_id` | B-tree | Company domain on batch and downstream queries |
+| `stock.reservation.batch` | `state` | B-tree | List filters and workflow |
+| `stock.reservation.line` | `batch_id` | B-tree | One2many join; cascade |
+| `stock.reservation.line` | `product_id` | B-tree | Quant allocation and lookups |
+| `stock.reservation.line` | `location_id` | B-tree | Allocation domain uses `child_of` on this field |
+| `stock.reservation.line` | `state` | B-tree | Dashboard filters and aggregation |
+| `stock.reservation.line` | `company_id` (related, stored) | B-tree | Cross-company filtering |
+| `stock.reservation.line` | `request_user_id` (related, stored) | B-tree | Aligns with line record rules |
+| `stock.reservation.line` | `move_id` | B-tree | Move / picking linkage |
+| `reservation.api.token` | `token` (SHA-256 hash) | B-tree | Auth lookup on API requests (`index=True` on field; **no SQL UNIQUE constraint** in module code) |
+
+Fields above use **`index=True`** where declared; Odoo creates B-tree indexes accordingly.
+
+### Constraints
+
+| Model | Constraint | Level |
+| --- | --- | --- |
+| `stock.reservation.line` | `requested_qty > 0` | SQL CHECK |
+| `stock.reservation.line` | `allocated_qty >= 0` | SQL CHECK |
+| `stock.reservation.line` | `allocated_qty <= requested_qty` | ORM `@api.constrains` |
+
+### Why these matter at scale
+
+- Record rules on **`request_user_id`** add **`WHERE request_user_id = …`** to user queries; indexing avoids sequential scans as batch/line tables grow.
+- **`state`** supports dashboard graph/pivot aggregations over lines.
+- **`product_id`** and **`location_id`** align with allocation **`stock.quant`** domains.
+- **`token`** indexing speeds Bearer resolution; uniqueness is not enforced at DB level in this module.
 
 ---
 
@@ -280,7 +345,57 @@ Routes **`/api/reservation/create`**, **`allocate`**, **`status/<id>`**; **`_aut
 
 ## Sprint plan (historical)
 
-Roughly six hours across model/security UI, allocation engine, API, tests, demo data, **`ensure_demo_stock`**, migrations, screenshot tooling, documentation.
+### Day 1 — Foundation & Core Models
+
+**Goal:** Runnable module with models, security, and basic UI.
+
+| Task | Done? |
+| --- | --- |
+| Scaffold module structure (`__manifest__`, `__init__`, security) | ✅ |
+| Define `stock.reservation.batch` (sequence, state, priority, scheduled_date, chatter) | ✅ |
+| Define `stock.reservation.line` (product, qtys, location, lot, move_id, state) | ✅ |
+| Define `reservation.api.token` (SHA-256 hashing) | ✅ |
+| Security groups + record rules (user/manager) | ✅ |
+| Tree + Form views for batch and lines | ✅ |
+| Sequence XML + demo data skeleton | ✅ |
+
+**Intentionally deferred:** Allocation engine, API, tests — wanted stable schema before building on top.
+
+---
+
+### Day 2 — Allocation Engine, Stock Integration & API
+
+**Goal:** Working allocation with moves, pickings, and exposed JSON endpoints.
+
+| Task | Done? |
+| --- | --- |
+| `_allocate_line`: quant search, FEFO/FIFO ordering, partial support | ✅ |
+| `_create_stock_move_for_line`: one move per line, staging destination | ✅ |
+| `_generate_pickings_from_allocated_moves`: grouped internal transfers, idempotent | ✅ |
+| `_check_allocate_authorization`: server-side AccessError guard | ✅ |
+| Smart buttons: stock moves count, transfers count | ✅ |
+| HTTP API: `/api/reservation/create`, `/api/reservation/allocate`, `/api/reservation/status/<id>` | ✅ |
+| Bearer token auth in controller | ✅ |
+| Demo inventory master + `hooks.ensure_demo_stock` (post-init hook + migration) | ✅ |
+
+**Intentionally deferred:** `SELECT FOR UPDATE` locking — design-level explanation provided instead (see Concurrency Strategy); full routing solver for multi-warehouse destinations — simplified to pack location / first internal type fallback.
+
+---
+
+### Day 3 — Tests, Performance, Dashboard & Documentation
+
+**Goal:** Correctness validation, performance evidence, dashboard, production-quality README.
+
+| Task | Done? |
+| --- | --- |
+| `TransactionCase` tests: full allocation, partial, no stock, FEFO, auth, move/picking idempotency | ✅ |
+| `HttpCase` tests: API routes, bearer auth, error paths | ✅ |
+| `tools/qa_full_validation.py`: seven shell ORM scenarios → TEST_EXECUTION_REPORT.md | ✅ |
+| Performance logging: `elapsed_ms` per line + total, `_logger.info` | ✅ |
+| Dashboard: graph (bar, requested vs allocated by state/product) + pivot (product × state) | ✅ |
+| README: architecture, performance, DB design, concurrency, known limitations | ✅ |
+
+**Intentionally NOT done:** Kanban view (dashboard covers visual summary need), per-quant audit trace model, UoM conversion on lines, automatic `action_assign()` on pickings, rate limiting on API.
 
 ---
 

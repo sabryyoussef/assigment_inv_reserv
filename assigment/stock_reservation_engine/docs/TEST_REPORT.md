@@ -73,10 +73,13 @@ The test class sets `readonly_enabled = False`. Odoo’s HTTP test harness can s
 
 3. **Company handling under `auth='none'`** — Explicit `company_id` on batch creation derives from the authenticated user’s company, with a deterministic fallback when needed. Defaults that rely on `env.company` do not apply reliably on the public environment used for unsigned HTTP entrypoints.
 
+4. **Reservation Dashboard** — Graph and pivot views on `stock.reservation.line` (`views/reservation_dashboard_views.xml`) have **no** automated test in this package. Validate manually: **Inventory → Stock Reservations → Dashboard**; switch graph ↔ pivot; confirm measures and filters behave as expected after creating or allocating batches (see README **How to verify**).
+
 ## Related Files
 
 - `controllers/api.py` — REST-style JSON routes for create, allocate, and status.
 - `security/reservation_security.xml` — Groups and record rules exercised by allocation and HTTP tests.
+- `views/reservation_dashboard_views.xml` — Dashboard graph/pivot (manual QA only).
 - `tests/__init__.py` — Controls import order for test modules.
 - `tests/test_reservation.py` — Transaction-level reservation and allocation scenarios.
 - `tests/test_reservation_http.py` — HTTP and JSON-RPC coverage.
