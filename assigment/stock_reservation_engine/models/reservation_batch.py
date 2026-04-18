@@ -2,7 +2,7 @@ import logging
 from datetime import datetime
 
 from odoo import _, api, fields, models
-from odoo.exceptions import UserError
+from odoo.exceptions import AccessError, UserError
 
 _logger = logging.getLogger(__name__)
 
@@ -62,8 +62,20 @@ class StockReservationBatch(models.Model):
         for batch in self:
             batch.state = 'done'
 
+    def _check_allocate_authorization(self):
+        """Server-side gate: reservation manager OR batch owner may allocate."""
+        self.ensure_one()
+        if self.env.user.has_group('stock_reservation_engine.group_stock_reservation_manager'):
+            return
+        if self.request_user_id == self.env.user:
+            return
+        raise AccessError(_(
+            'Only the reservation owner or a Stock Reservation Manager can allocate this batch.'
+        ))
+
     def action_allocate(self):
         for batch in self:
+            batch._check_allocate_authorization()
             batch._action_allocate_single()
         return True
 
@@ -76,10 +88,14 @@ class StockReservationBatch(models.Model):
         if not self.line_ids:
             raise UserError(_('There are no reservation lines to allocate.'))
 
-        _logger.info('Starting allocation for reservation batch %s', self.name)
+        _logger.info(
+            'Allocation start batch=%s user=%s id=%s',
+            self.name, self.env.user.login, self.env.user.id,
+        )
         self.write({'allocation_in_progress': True})
         try:
             for line in self.line_ids:
+                # Fully allocated lines with a move: skip (no duplicate moves)
                 if line.state == 'allocated' and line.move_id:
                     continue
 
@@ -91,11 +107,21 @@ class StockReservationBatch(models.Model):
                     'state': self._compute_line_state(line.requested_qty, allocated),
                     'lot_id': chosen_lot,
                 })
-                if allocated > 0 and not line.move_id:
-                    move = self._create_stock_move_for_line(line)
-                    line.move_id = move.id
+                # One move per line; refresh qty if re-running allocation on partial lines
+                if allocated > 0:
+                    if line.move_id:
+                        line.move_id.write({'product_uom_qty': allocated})
+                    else:
+                        move = self._create_stock_move_for_line(line)
+                        line.move_id = move.id
             self._compute_batch_state()
-            _logger.info('Finished allocation for reservation batch %s with state %s', self.name, self.state)
+            _logger.info(
+                'Allocation end batch=%s state=%s lines=%s moves=%s',
+                self.name,
+                self.state,
+                len(self.line_ids),
+                len(self.line_ids.filtered('move_id')),
+            )
         finally:
             self.write({'allocation_in_progress': False})
 

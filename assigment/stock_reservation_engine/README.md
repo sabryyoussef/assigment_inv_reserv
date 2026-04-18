@@ -186,8 +186,8 @@ To remove demo data from a dev database, delete the related `ir.model.data` rows
 ## Security Model
 - Reservation users can access only their own batches and lines.
 - Reservation managers can access all records.
-- Allocation from the UI is restricted to the manager group.
-- API access is token-based and resolves to an Odoo user.
+- **`action_allocate` is enforced on the server** (`AccessError` if unauthorized): callers must be either **Stock Reservation Manager** or the **batch owner** (`request_user_id`). UI button visibility may still narrow who sees **Allocate**, but RPC and API calls cannot bypass this check.
+- API access is token-based and resolves to an Odoo user; API handlers call batch methods **with that user** (`with_user`) so authorization runs as the authenticated identity, not only as UI restrictions.
 
 ## Performance Strategy
 ### Avoiding N+1 queries
@@ -227,14 +227,14 @@ Recommended / used indexes:
 These constraints keep reservation data valid and guard against inconsistent updates.
 
 ## Concurrency Strategy
-Concurrency was analyzed at design level, as required by the assignment.
+Concurrency is handled at the **application level** in this module. **Database row locking** (`SELECT FOR UPDATE` on `stock.quant` or related rows) is **not** implemented here; it remains a future hardening step for high-contention deployments.
 
 ### Current implementation
 The module includes lightweight application-level protection using:
 - state guards
 - `allocation_in_progress` flag
-- duplicate move prevention
-- skipping already allocated lines
+- duplicate move prevention (one move per line; refresh qty on re-allocation)
+- skipping lines that are already fully allocated with an existing move
 
 This reduces accidental double processing from repeated clicks or repeated API calls.
 
@@ -248,9 +248,10 @@ For production-grade concurrency safety, the next step would be:
 3. Optionally add retry logic for lock contention or serialization failures
 
 ## Testing
-Implemented Odoo test cases using `TransactionCase`.
+- **`TransactionCase`**: allocation scenarios (full, partial, no stock, FEFO), server-side allocation authorization (non-owner / non-manager denied).
+- **`HttpCase`** (minimal): JSON-RPC `POST /api/reservation/create` — missing Bearer → structured error (`code`); valid Bearer + stock → success payload. HTTP tests **commit** created tokens/quants so the separate HTTP worker cursor can see them.
 
-Covered scenarios:
+Covered scenarios (transaction tests):
 1. Full allocation when enough stock exists
 2. Partial allocation when available stock is lower than requested quantity
 3. No-stock scenario
@@ -264,7 +265,7 @@ Covered scenarios:
 - No UoM conversion on reservation lines. The `uom_id` is taken from `product_id.uom_id` only. Lines with a different requested unit of measure are not supported.
 - API tokens are hashed with SHA-256 on save. Existing tokens created before this version stored their value in plaintext and must be deleted and re-created. Raw token values are never retrievable after saving.
 - The API has no rate limiting. This is acceptable for the current sprint scope. A production deployment should add throttling at the reverse-proxy or middleware level.
-- The `sudo()` scope in the API controller is intentionally broad for the sprint. Each write operation is guarded by a manual ownership or group check. A production hardening step would narrow `sudo()` to only the lookup operations and switch to `with_user(user)` for writes.
+- Create/list paths still use `sudo()` where needed for cross-company/token lookup; sensitive actions (`action_allocate`, `action_confirm`) are invoked **with the authenticated API user** so record rules and `has_group` checks apply correctly.
 
 ## Installation
 1. Copy the module folder into your custom addons path.

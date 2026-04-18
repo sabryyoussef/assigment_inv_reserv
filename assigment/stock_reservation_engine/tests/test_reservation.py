@@ -1,4 +1,7 @@
+import uuid
 from datetime import datetime, timedelta
+
+from odoo.exceptions import AccessError
 
 from odoo.tests import tagged
 from odoo.tests.common import TransactionCase
@@ -14,44 +17,36 @@ class TestStockReservation(TransactionCase):
         cls.output_location = cls.env.ref('stock.stock_location_output')
         cls.uom_unit = cls.env.ref('uom.product_uom_unit')
 
-        # Use storable product type if available, fall back to consu.
-        # In Odoo 18 enterprise the valid selection key for a stock-tracked
-        # product may vary by installed modules, so we probe at runtime.
-        storable_type = cls._get_storable_type()
-
-        cls.product = cls.env['product.template'].create({
+        # Odoo 17+: tracked inventory uses consumable + is_storable=True (works across community/enterprise).
+        pt_vals = {
             'name': 'Reservation Product',
-            'type': storable_type,
+            'type': 'consu',
             'uom_id': cls.uom_unit.id,
             'uom_po_id': cls.uom_unit.id,
-        }).product_variant_ids[0]
-        cls.lot_product = cls.env['product.template'].create({
+            'categ_id': cls.env.ref('product.product_category_all').id,
+        }
+        if 'is_storable' in cls.env['product.template']._fields:
+            pt_vals['is_storable'] = True
+        cls.product = cls.env['product.template'].create(pt_vals).product_variant_ids[0]
+        lot_vals = {
             'name': 'Lot Reservation Product',
-            'type': storable_type,
+            'type': 'consu',
             'tracking': 'lot',
             'uom_id': cls.uom_unit.id,
             'uom_po_id': cls.uom_unit.id,
-        }).product_variant_ids[0]
-
-    @classmethod
-    def _get_storable_type(cls):
-        """Return the correct selection value for a stock-tracked product in
-        the current Odoo version.  Odoo 18 uses 'storable'; older builds
-        used 'product'.  If neither is accepted we fall back to 'consu'."""
-        type_field = cls.env['product.template']._fields.get('type')
-        if type_field:
-            valid = [k for k, _ in (type_field.selection or [])]
-            for candidate in ('storable', 'product'):
-                if candidate in valid:
-                    return candidate
-        return 'consu'
+            'categ_id': cls.env.ref('product.product_category_all').id,
+        }
+        if 'is_storable' in cls.env['product.template']._fields:
+            lot_vals['is_storable'] = True
+        cls.lot_product = cls.env['product.template'].create(lot_vals).product_variant_ids[0]
 
     def _add_stock(self, product, location, qty, lot=None):
-        """Add stock via stock.quant if the product supports quants,
-        otherwise skip silently (consumables have no quants)."""
-        if product.type == 'consu':
+        """Add stock via stock.quant when the variant is inventory-tracked."""
+        if product.type == 'service':
             return False
-        self.env['stock.quant']._update_available_quantity(
+        if product.type == 'consu' and not getattr(product, 'is_storable', False):
+            return False
+        self.env['stock.quant'].sudo()._update_available_quantity(
             product, location, qty, lot_id=lot
         )
         return True
@@ -105,10 +100,6 @@ class TestStockReservation(TransactionCase):
         self.assertEqual(batch.state, 'partial')
 
     def test_fefo_preferred_lot(self):
-        if self.lot_product.type == 'consu':
-            self.skipTest('FEFO test requires a storable tracked product; '
-                          'current environment does not support storable type')
-
         # Check whether the lot expiry field is available
         lot_fields = self.env['stock.lot']._fields
         expiry_field = next(
@@ -153,4 +144,114 @@ class TestStockReservation(TransactionCase):
         })
         with self.assertRaises(Exception):
             batch.action_confirm()
+
+    def test_allocate_denied_non_owner_non_manager(self):
+        """RPC must enforce same policy as UI: owner or reservation manager."""
+        other = self.env['res.users'].create({
+            'name': 'Reservation peer user',
+            'login': 'res_peer_%s' % uuid.uuid4().hex,
+            'password': 'res_peer',
+            'company_id': self.env.company.id,
+            'company_ids': [(6, 0, [self.env.company.id])],
+            'groups_id': [(6, 0, [
+                self.env.ref('base.group_user').id,
+                self.env.ref('stock.group_stock_user').id,
+                self.env.ref('stock_reservation_engine.group_stock_reservation_user').id,
+            ])],
+        })
+        batch = self.env['stock.reservation.batch'].create({
+            'request_user_id': self.env.user.id,
+            'line_ids': [(0, 0, {
+                'product_id': self.product.id,
+                'requested_qty': 1.0,
+                'location_id': self.stock_location.id,
+            })],
+        })
+        batch.action_confirm()
+        with self.assertRaises(AccessError):
+            batch.with_user(other).action_allocate()
+
+    def test_owner_can_allocate_own_batch(self):
+        owner = self.env['res.users'].create({
+            'name': 'Reservation owner alloc',
+            'login': 'res_owner_alloc_%s' % uuid.uuid4().hex,
+            'password': 'owner',
+            'company_id': self.env.company.id,
+            'company_ids': [(6, 0, [self.env.company.id])],
+            'groups_id': [(6, 0, [
+                self.env.ref('base.group_user').id,
+                self.env.ref('stock.group_stock_user').id,
+                self.env.ref('stock_reservation_engine.group_stock_reservation_user').id,
+            ])],
+        })
+        stocked = self._add_stock(self.product, self.stock_location, 5.0)
+        batch = self.env['stock.reservation.batch'].with_user(owner).create({
+            'request_user_id': owner.id,
+            'line_ids': [(0, 0, {
+                'product_id': self.product.id,
+                'requested_qty': 2.0,
+                'location_id': self.stock_location.id,
+            })],
+        })
+        batch.with_user(owner).action_confirm()
+        batch.with_user(owner).action_allocate()
+        line = batch.line_ids[0]
+        if stocked:
+            self.assertEqual(line.state, 'allocated')
+            self.assertTrue(line.move_id)
+
+    def test_manager_can_allocate_other_users_batch(self):
+        owner = self.env['res.users'].create({
+            'name': 'Reservation owner foreign',
+            'login': 'res_owner_for_%s' % uuid.uuid4().hex,
+            'password': 'owner',
+            'company_id': self.env.company.id,
+            'company_ids': [(6, 0, [self.env.company.id])],
+            'groups_id': [(6, 0, [
+                self.env.ref('base.group_user').id,
+                self.env.ref('stock.group_stock_user').id,
+                self.env.ref('stock_reservation_engine.group_stock_reservation_user').id,
+            ])],
+        })
+        manager = self.env['res.users'].create({
+            'name': 'Reservation manager alloc',
+            'login': 'res_mgr_alloc_%s' % uuid.uuid4().hex,
+            'password': 'mgr',
+            'company_id': self.env.company.id,
+            'company_ids': [(6, 0, [self.env.company.id])],
+            'groups_id': [(6, 0, [
+                self.env.ref('base.group_user').id,
+                self.env.ref('stock.group_stock_user').id,
+                self.env.ref('stock_reservation_engine.group_stock_reservation_manager').id,
+            ])],
+        })
+        stocked = self._add_stock(self.product, self.stock_location, 4.0)
+        batch = self.env['stock.reservation.batch'].with_user(owner).create({
+            'request_user_id': owner.id,
+            'line_ids': [(0, 0, {
+                'product_id': self.product.id,
+                'requested_qty': 2.0,
+                'location_id': self.stock_location.id,
+            })],
+        })
+        batch.with_user(owner).action_confirm()
+        batch.with_user(manager).action_allocate()
+        line = batch.line_ids[0]
+        if stocked:
+            self.assertEqual(line.state, 'allocated')
+
+    def test_second_allocate_does_not_duplicate_move(self):
+        stocked = self._add_stock(self.product, self.stock_location, 10.0)
+        if not stocked:
+            self.skipTest('Requires storable product with quants')
+        # Batch must stay in partial/confirmed after first allocate so a second run is allowed.
+        batch = self._create_batch(self.product, 25.0)
+        batch.action_allocate()
+        line = batch.line_ids[0]
+        self.assertEqual(line.state, 'partial')
+        self.assertTrue(line.move_id)
+        move_id = line.move_id.id
+        batch.action_allocate()
+        line.invalidate_recordset()
+        self.assertEqual(line.move_id.id, move_id)
 

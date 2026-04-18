@@ -1,6 +1,6 @@
 {
     'name': 'Stock Reservation Engine',
-    'version': '18.0.1.0.2',
+    'version': '18.0.1.0.4',
     'summary': 'Reservation and allocation engine with API exposure',
     'description': 'Custom stock reservation and allocation engine with FEFO/FIFO logic, API layer, and engineering-focused README.',
     'author': 'OpenAI',
