@@ -198,6 +198,8 @@ class StockReservationBatch(models.Model):
                 batch.state = 'draft'
             elif all(state == 'cancelled' for state in states):
                 batch.state = 'cancelled'
+            elif all(state in ['allocated', 'cancelled'] for state in states):
+                batch.state = 'allocated'
             elif all(state == 'allocated' for state in states):
                 batch.state = 'allocated'
             elif any(state in ['partial', 'not_available'] for state in states):

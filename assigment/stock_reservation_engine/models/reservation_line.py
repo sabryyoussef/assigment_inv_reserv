@@ -9,7 +9,6 @@ class StockReservationLine(models.Model):
 
     batch_id = fields.Many2one('stock.reservation.batch', required=True, ondelete='cascade', index=True)
     company_id = fields.Many2one(related='batch_id.company_id', store=True, index=True)
-    currency_id = fields.Many2one(related='company_id.currency_id', store=True)
     request_user_id = fields.Many2one(related='batch_id.request_user_id', store=True, index=True)
     product_id = fields.Many2one('product.product', required=True, index=True)
     requested_qty = fields.Float(required=True, digits='Product Unit of Measure')
