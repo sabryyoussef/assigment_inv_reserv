@@ -96,6 +96,22 @@ class StockReservationBatch(models.Model):
             batch._action_allocate_single()
         return True
 
+    def _is_lock_conflict_error(self, exc):
+        """Detect lock-contention exceptions across psycopg and Odoo wrappers."""
+        seen = set()
+        current = exc
+        while current and id(current) not in seen:
+            seen.add(id(current))
+            if getattr(current, 'pgcode', None) == '55P03':
+                return True
+            if current.__class__.__name__ == 'LockNotAvailable':
+                return True
+            message = str(current).lower()
+            if 'could not obtain lock on row' in message or 'lock not available' in message:
+                return True
+            current = getattr(current, '__cause__', None) or getattr(current, '__context__', None)
+        return False
+
     def _lock_rows_nowait(self, table_name, ids, user_message):
         """Acquire row-level locks deterministically and fail fast if another transaction holds them."""
         ids = sorted({int(rec_id) for rec_id in ids if rec_id})
@@ -108,7 +124,7 @@ class StockReservationBatch(models.Model):
                     [tuple(ids)],
                 )
         except Exception as exc:
-            if getattr(exc, 'pgcode', None) == '55P03' or exc.__class__.__name__ == 'LockNotAvailable':
+            if self._is_lock_conflict_error(exc):
                 raise UserError(user_message) from exc
             raise
 
