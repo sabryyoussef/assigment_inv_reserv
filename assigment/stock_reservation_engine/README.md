@@ -65,20 +65,23 @@ The business request exists at line level, not quant level. Therefore the module
 9. Batch state is derived from line states.
 10. External systems can query the status endpoint.
 
-## Sprint Plan
-### Day 1
+## Sprint plan (~6 hours total)
+
+Work was compressed into roughly three two-hour segments (same scope as the original multi-day outline).
+
+### Hours 1–2
 - Designed data model and states
 - Implemented security groups, record rules, and access rights
 - Built basic menu, tree view, and form view
 - Added batch sequence
 
-### Day 2
+### Hours 3–4
 - Implemented allocation engine
 - Added FEFO / FIFO ordering
 - Added partial allocation support
 - Added stock move generation and smart button
 
-### Day 3
+### Hours 5–6
 - Implemented JSON APIs and token authentication
 - Added tests for full allocation, partial allocation, no stock, and FEFO
 - Wrote README covering architecture, performance, database design, and concurrency
