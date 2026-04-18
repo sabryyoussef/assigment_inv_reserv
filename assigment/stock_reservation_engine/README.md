@@ -5,6 +5,25 @@ This module adds a custom reservation and allocation layer on top of Odoo Invent
 
 The objective is to support high-volume scenarios where competing demands may request the same stock before normal fulfillment flows are executed.
 
+## Screenshots
+
+Screenshots ship under Odoo’s standard asset path **`static/description/screenshots/`** (available in the Apps UI when listed, and ideal for README / assignment packages).
+
+| Folder | Script | Purpose |
+|--------|--------|---------|
+| `static/description/screenshots/capture/` | `tools/screenshots/` → `npm run capture` | Broad inventory + reservation UI tour |
+| `static/description/screenshots/walkthrough/` | `tools/screenshots/` → `npm run walkthrough` | Structured assignment walkthrough ([index](static/description/screenshots/walkthrough/SCREENSHOTS_INDEX.md)) |
+
+**Examples** (refresh PNGs after install with demo data):
+
+![Reservation batches list](static/description/screenshots/capture/04-reservation-batches-list.png)
+
+![Reservation batch draft state](static/description/screenshots/capture/06-reservation-batch-draft.png)
+
+![Stock Reservations reporting menu](static/description/screenshots/capture/28-reporting-menu-expanded.png)
+
+Full procedure: [static/description/screenshots/README.md](static/description/screenshots/README.md).
+
 ## Scope Delivered
 - Custom models:
   - `stock.reservation.batch`
@@ -106,44 +125,56 @@ The API expects a bearer token:
 
 Tokens are managed using the `Reservation API Tokens` menu.
 
-## Demo / test data (`data/reservation_demo_data.xml` + `hooks.py`)
-- **XML** (`noupdate`): products, locations, lots, batches/lines, users, API token rows.
-- **Stock levels** are applied idempotently by `hooks.ensure_demo_stock()` from **`post_init_hook`** (new installs) and **`migrations/18.0.1.0.2/post-demo_stock.py`** (upgrades to 18.0.1.0.2+).
+## Demo environment (install-ready)
+The module ships a **self-contained demo** for clean databases: warehouse **Main Demo Warehouse (MDW)**, internal sub-locations, product categories under **All / Reservation Demo**, storable demo products, lot-tracked perishables with **Products Expiration Date** (`product_expiry` dependency), and sample reservation batches. No manual inventory structure is required to try allocation.
 
-### Products & inventory targets
-| XML template id | Scenario |
-|-----------------|----------|
-| `demo_pt_full` | 50 units @ main WH stock |
-| `demo_pt_partial` | 25 units @ main WH stock |
-| `demo_pt_empty` | No stock |
-| `demo_pt_shelf_only` | 12 units **only** on child location `demo_location_shelf` |
-| `demo_pt_lots` + `demo_lot_alpha` / `demo_lot_beta` | 18 units on **LOT-ALPHA** only (BETA has no quants) |
+### Data files
+| File | Role |
+|------|------|
+| `data/demo_inventory_master.xml` | Company-scoped **MDW** warehouse (code `MDW`, standard receipt/delivery steps and routes from core `stock`), sub-locations (*Shelf A*, *Shelf B*, *Cold Zone* with FEFO removal strategy, optional *Quality Control*), product categories, product templates, lots (`LOT-X-001`, `LOT-X-002`, `LOT-Y-001`). |
+| `data/reservation_demo_data.xml` | Users, API token records, reservation batches/lines referencing MDW stock. |
+
+**Accounting:** demo uses default product categories and Odoo inventory configuration. No extra chart of accounts, journals, or valuation modes are introduced; add only if your company policy requires them.
+
+### Stock levels (`hooks.ensure_demo_stock`)
+Quantities are **not** stored in XML; `hooks.ensure_demo_stock()` adjusts `stock.quant` idempotently (safe to replay). Triggers:
+- **`post_init_hook`** on first install.
+- **`migrations/18.0.1.5.0/post-demo_stock.py`** when upgrading to **18.0.1.5.0+** (and the earlier migration for 18.0.1.0.2 remains for older upgrades).
+
+| Product (template xml id) | Inventory layout |
+|---------------------------|------------------|
+| `demo_pt_full` — *Demo Product A* | **35 + 35** units on **Shelf A** and **Shelf B** under MDW/Stock (none on the stock root — exercises `child_of`). |
+| `demo_pt_partial` — *Demo Product B* | **12** units on MDW **lot stock** root — partial vs **40** requested on `demo_batch_partial`. |
+| `demo_pt_empty` — *Demo Product C* | **No** stock. |
+| `demo_pt_lots` — *Perishable Product X* | **LOT-X-001**: **12** units in **Cold Zone**; **LOT-X-002**: **14** units in **Cold Zone**. Expiration dates set in the hook so **LOT-X-001** expires sooner (FEFO ordering). |
+| `demo_pt_perishable_y` — *Perishable Product Y* | **No** stock (preferred-lot-not-available demo). |
 
 ### Users & API tokens (plaintext secrets — stored hashed)
 | Login / name | Groups | Bearer secret (if applicable) |
 |----------------|--------|-------------------------------|
-| `admin` | + Reservation Manager (demo) | `demo-reservation-api-token-change-me` (`demo_api_token`) |
-| `demo_res_user` / **Demo Reservation User** | Internal user, stock user, **Reservation User** only | `demo-res-user-api-token-change-me` (`demo_api_token_res_user`) |
+| `admin` | Multi-warehouses, **Reservation Manager** (demo data) | `demo-reservation-api-token-change-me` (`demo_api_token`) |
+| `demo_res_user` | Internal, stock user, multi-warehouses, **Reservation User** | `demo-res-user-api-token-change-me` (`demo_api_token_res_user`) |
 | — | Inactive token record | `inactive-token-never-valid` (`demo_api_token_inactive`, `active=False`) — expect 401 |
 
-### Batches (XML ids) — what to test
+### Reservation batches (xml ids) — quick checks
 | Batch xml:id | Intent |
 |--------------|--------|
-| `demo_batch_draft` | Draft → **Confirm** → **Allocate** (single full line) |
-| `demo_batch_partial` | Confirmed; one line **partial** vs 25 on hand |
-| `demo_batch_empty` | Confirmed; **not_available** |
-| `demo_batch_mixed` | One **Allocate**: lines → allocated / partial / not_available; batch **partial** |
-| `demo_batch_dual_full` | Two lines; after allocate → batch **allocated** |
-| `demo_batch_cancelled` | **Cancelled** batch + line |
-| `demo_batch_done` | **Done** + line already **allocated** (static snapshot) |
-| `demo_batch_lot_ok` | Preferred **ALPHA** + stock on ALPHA → allocates |
-| `demo_batch_lot_bad` | Preferred **BETA**, stock only on ALPHA → **not_available** |
-| `demo_batch_shelf_parent` | Line uses **parent** WH stock; qty on **child** shelf only (`child_of`) |
-| `demo_batch_prio_low` | **Low** priority, **draft**, two lines |
-| `demo_batch_urgent` | **Urgent** + **scheduled_date** |
-| `demo_batch_demo_user_owned` | Owned by `demo_res_user` — **record rule** / API ownership tests |
+| `demo_batch_draft` | Draft → **Confirm** → **Allocate** (Demo Product A). |
+| `demo_batch_partial` | Partial line vs on-hand Demo Product B. |
+| `demo_batch_empty` | Demo Product C — **not_available**. |
+| `demo_batch_mixed` | Mixed line outcomes in one allocate. |
+| `demo_batch_dual_full` | Two lines; batch can reach **allocated**. |
+| `demo_batch_cancelled` | Cancelled snapshot. |
+| `demo_batch_done` | Done snapshot. |
+| `demo_batch_lot_ok` | Perishable X + preferred **LOT-X-001** with stock. |
+| `demo_batch_lot_bad` | Perishable Y + preferred **LOT-Y-001**, **no** stock. |
+| `demo_batch_fefo` | Perishable X — multi-lot FEFO from Cold Zone. |
+| `demo_batch_shelf_parent` | Parent MDW/Stock line; quantity only under Shelf A/B (`child_of`). |
+| `demo_batch_demo_user_owned` | Owned by `demo_res_user` (record rules / API). |
 
-To remove demo data from a dev database, delete the related `ir.model.data` rows or restore a backup.
+**Quick test:** Install module → **Inventory → Configuration → Warehouses** → open **Main Demo Warehouse** → review locations; **Reservation** menu → open `demo_batch_draft` → Confirm → Allocate.
+
+To strip demo artefacts from a database, remove related records or restore a backup.
 
 ## Code reference (models & controllers)
 
