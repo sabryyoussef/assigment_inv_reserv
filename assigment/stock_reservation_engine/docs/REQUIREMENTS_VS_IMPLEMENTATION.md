@@ -82,7 +82,7 @@ Legend: **Done** = implemented and usable | **Done (extended)** = requirement me
 | **Tests** (3–5+ cases: allocation, partial, no stock) | **Done** | `tests/test_reservation.py`: full, partial, no stock, FEFO when expiry fields exist (skip otherwise), cancel batch, confirm without lines, allocate auth, **picking linkage**, **no picking without stock**, **re-allocate picking idempotency**. **`tests/test_reservation_http.py`**: JSON-RPC API routes and Bearer auth. **`tools/qa_full_validation.py`**: seven ORM scenarios including picking and idempotency → **`TEST_EXECUTION_REPORT.md`**. |
 | **Performance** (N+1, critical queries, scaling, complexity) | **Done** | `README.md` — “Performance strategy” |
 | **Database** (indexes, constraints) | **Done** | `README.md` — “Database design” |
-| **Concurrency** (risks + proposed mitigation, **design level**) | **Done (design-level, as per assignment)** | `README.md` — “Concurrency strategy”; **`allocation_in_progress`**, skip moves already on pickings — **application-level**; row-level DB locking documented as future work. |
+| **Concurrency** (risks + proposed mitigation, **design level**) | **Done (implemented + documented)** | `README.md` — “Concurrency strategy”; **`allocation_in_progress`**, idempotency guards, plus **row-level NOWAIT locking** on the batch and candidate `stock.quant` rows to reduce race conditions. |
 
 ---
 
@@ -104,7 +104,7 @@ Legend: **Done** = implemented and usable | **Done (extended)** = requirement me
 
 | Bonus | Status |
 |-------|--------|
-| Concurrency-safe allocation (DB locking) | **Missing** (documented; optional beyond brief) |
+| Concurrency-safe allocation (DB locking) | **Partial / Done-basic** — batch and quant rows now use **NOWAIT** locking; advanced retry and high-contention strategies remain future hardening |
 | Picking generation from moves | **Done** — internal transfer **`stock.picking`** grouped by **`(location_id, location_dest_id)`**; **`picking_ids`** + **Transfers** smart button; confirm without auto-assign (see README **Stock transfer (picking) generation**) |
 | Profiling / timings in logs | **Done** — INFO **`Allocation line timing`** (`elapsed_ms` per line) and **`Finished allocation`** (`total_elapsed_ms`) |
 | Kanban | **Missing** |

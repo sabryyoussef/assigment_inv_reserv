@@ -96,8 +96,73 @@ class StockReservationBatch(models.Model):
             batch._action_allocate_single()
         return True
 
+    def _is_lock_conflict_error(self, exc):
+        """Detect lock-contention exceptions across psycopg and Odoo wrappers."""
+        seen = set()
+        current = exc
+        while current and id(current) not in seen:
+            seen.add(id(current))
+            if getattr(current, 'pgcode', None) == '55P03':
+                return True
+            if current.__class__.__name__ == 'LockNotAvailable':
+                return True
+            message = str(current).lower()
+            if 'could not obtain lock on row' in message or 'lock not available' in message:
+                return True
+            current = getattr(current, '__cause__', None) or getattr(current, '__context__', None)
+        return False
+
+    def _lock_rows_nowait(self, table_name, ids, user_message):
+        """Acquire row-level locks deterministically and fail fast if another transaction holds them."""
+        ids = sorted({int(rec_id) for rec_id in ids if rec_id})
+        if not ids:
+            return
+        try:
+            with self.env.cr.savepoint():
+                self.env.cr.execute(
+                    'SELECT id FROM %s WHERE id IN %%s ORDER BY id FOR UPDATE NOWAIT' % table_name,
+                    [tuple(ids)],
+                )
+        except Exception as exc:
+            if self._is_lock_conflict_error(exc):
+                raise UserError(user_message) from exc
+            raise
+
+    def _get_line_quant_domain(self, line):
+        self.ensure_one()
+        domain = [
+            ('product_id', '=', line.product_id.id),
+            ('location_id', 'child_of', line.location_id.id),
+            ('quantity', '>', 0),
+            ('company_id', '=', self.company_id.id),
+        ]
+        if line.lot_id:
+            domain.append(('lot_id', '=', line.lot_id.id))
+        return domain
+
+    def _lock_candidate_quants_nowait(self):
+        """Lock all candidate stock.quant rows for this batch before computing availability."""
+        self.ensure_one()
+        Quant = self.env['stock.quant']
+        quant_ids = set()
+        for line in self.line_ids:
+            if line.state == 'allocated' and line.move_id:
+                continue
+            quant_ids.update(Quant.search(self._get_line_quant_domain(line), order='id asc').ids)
+        self._lock_rows_nowait(
+            'stock_quant',
+            quant_ids,
+            _('Some stock quantities are currently being allocated by another user. Please try again in a moment.'),
+        )
+
     def _action_allocate_single(self):
         self.ensure_one()
+        self._lock_rows_nowait(
+            self._table,
+            self.ids,
+            _('This reservation batch is already being allocated by another user. Please try again in a moment.'),
+        )
+        self.invalidate_recordset()
         if self.allocation_in_progress:
             raise UserError(_('Allocation is already in progress for this batch.'))
         if self.state not in ['draft', 'confirmed', 'partial']:
@@ -111,6 +176,7 @@ class StockReservationBatch(models.Model):
         )
         self.write({'allocation_in_progress': True})
         try:
+            self._lock_candidate_quants_nowait()
             batch_t0 = time.perf_counter()
             for line in self.line_ids:
                 # Fully allocated lines with a move: skip (no duplicate moves)
@@ -162,14 +228,7 @@ class StockReservationBatch(models.Model):
         allocated = 0.0
         lot_id = False
 
-        domain = [
-            ('product_id', '=', line.product_id.id),
-            ('location_id', 'child_of', line.location_id.id),
-            ('quantity', '>', 0),
-            ('company_id', '=', self.company_id.id),
-        ]
-        if line.lot_id:
-            domain.append(('lot_id', '=', line.lot_id.id))
+        domain = self._get_line_quant_domain(line)
 
         use_fefo = self._get_quant_order(line)
         quants = self.env['stock.quant'].search(domain, order='in_date asc, id asc')

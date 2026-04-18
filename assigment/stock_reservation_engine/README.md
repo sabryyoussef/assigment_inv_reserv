@@ -165,7 +165,7 @@ No **`TransactionCase`** / **`HttpCase`** targets the dashboard views. Validate 
 
 ## Known limitations
 
-- **No `SELECT FOR UPDATE`** (or equivalent) on **`stock.quant`**. Concurrency relies on application guards (`allocation_in_progress`, state checks). High contention can still over-allocate across transactions.
+- Row-level locking now protects the reservation batch and candidate **`stock.quant`** rows using **`FOR UPDATE NOWAIT`**. This reduces race conditions significantly, but a full retry/backoff or queue-based strategy is still not implemented for extreme contention.
 - **`action_assign()`** on generated pickings is **not** automatic; operators run **Check Availability** if needed.
 - **Multi-company**: logic uses **`company_id`** on the batch and standard domain filters; no extra cross-company isolation testing is implied.
 - **Operation type / destination fallback** is **first matching Internal type** and **default destination** when pack location is missing — simplified, not a full routing engine.
@@ -314,18 +314,20 @@ Fields above use **`index=True`** where declared; Odoo creates B-tree indexes ac
 
 | Scenario | Risk |
 | --- | --- |
-| Two users allocate the same batch simultaneously | **`allocation_in_progress`** flag blocks the second call with **`UserError`** |
-| Two users allocate **different** batches competing for the same quant | Over-allocation possible — both read the same **`quantity`** before either writes |
+| Two users allocate the same batch simultaneously | Batch **NOWAIT** row locking and **`allocation_in_progress`** cause the second call to fail fast with **`UserError`** |
+| Two users allocate **different** batches competing for the same quant | Candidate **`stock.quant`** rows are **NOWAIT**-locked, so the second caller receives a predictable retry-style error instead of silently racing |
 | API retries on network timeout | Duplicate allocation attempt; idempotency guards (move + picking skip) prevent duplicate records |
 
-### Current application-level safeguards
+### Current safeguards
 
-- **`allocation_in_progress`** boolean: set to **`True`** at start of **`_action_allocate_single`**, cleared in **`finally`**. Same-batch concurrent calls raise **`UserError`**.
+- **Batch row locking**: the batch itself is locked with **`FOR UPDATE NOWAIT`** before allocation starts, so simultaneous allocation attempts on the same batch fail fast with a clear **`UserError`**.
+- **Quant row locking**: candidate **`stock.quant`** rows are locked with **`FOR UPDATE NOWAIT`** before availability is computed, reducing cross-batch over-allocation under contention.
+- **`allocation_in_progress`** boolean: still provides an application-level guard and user-facing state indicator while allocation is running.
 - State checks: only **`draft`**, **`confirmed`**, **`partial`** batches can be allocated.
 - Move idempotency: lines with existing **`move_id`** refresh qty rather than creating duplicates.
 - Picking idempotency: moves already on a picking are skipped by **`_generate_pickings_from_allocated_moves`**.
 
-### Proposed production solution (not yet implemented)
+### Possible production evolution
 
 ```sql
 SELECT id, quantity, reserved_quantity
@@ -334,14 +336,14 @@ WHERE product_id = %s AND location_id = ANY(%s)
 FOR UPDATE SKIP LOCKED;
 ```
 
-- **`FOR UPDATE SKIP LOCKED`** on candidate quants inside the allocation transaction prevents two concurrent allocations from reading the same available quantity.
-- If a quant is locked by another transaction, **`SKIP LOCKED`** skips it rather than blocking, which is safer than **`FOR UPDATE`** in high-throughput scenarios.
-- Alternatively: a dedicated **`stock.reservation.lock`** table with one row per **`(product_id, location_id, company_id)`** can serialize allocation across batches without locking the full quant table.
-- Odoo's own **`_update_available_quantity`** uses **`SELECT FOR UPDATE`** internally — aligning reservation allocation with this pattern is the correct production path.
+- The current implementation uses **`FOR UPDATE NOWAIT`** so competing requests fail quickly and can be retried.
+- A future high-throughput variant could use **`SKIP LOCKED`** plus retry/backoff logic when the business prefers graceful degradation over immediate user errors.
+- Another option is a dedicated lock table keyed by **`(product_id, location_id, company_id)`** to serialize allocation more explicitly.
+- This follows the same general database-locking direction used by Odoo’s own stock update internals.
 
-### Why not implemented now
+### Remaining limitation
 
-Assignment scope specifies design-level concurrency explanation. The application guards are sufficient for single-server, moderate-load environments. The **`SELECT FOR UPDATE`** path requires wrapping the entire **`_allocate_line`** loop in a savepoint-aware transaction context, which is a non-trivial change tested under load — deferred to a follow-up sprint.
+The concurrency path is now materially stronger, but it is still a lightweight implementation: there is no background retry queue, no exponential backoff, and no load-test benchmark proving behavior under extreme parallel traffic.
 
 ---
 
