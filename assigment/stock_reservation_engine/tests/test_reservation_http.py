@@ -157,6 +157,37 @@ class TestReservationApiHttp(HttpCase):
         result = body.get('result') or {}
         self.assertEqual(result.get('status'), 'success', msg=body)
 
+    def test_api_create_and_status_support_v1_prefix(self):
+        token_raw = self._make_token_for_user(self.env.ref('base.user_admin'))
+        variant, loc = self._make_storable_variant_with_stock(5.0)
+        self._flush()
+        create_response = self.url_open(
+            '/api/v1/reservation/create',
+            data=_rpc_json(7, {
+                'lines': [{'product_id': variant.id, 'qty': 2, 'location_id': loc.id}],
+            }),
+            headers={
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer %s' % token_raw,
+            },
+        )
+        self.assertEqual(create_response.status_code, 200)
+        create_body = create_response.json()
+        create_result = create_body.get('result') or {}
+        self.assertEqual(create_result.get('status'), 'success', msg=create_body)
+
+        batch_id = create_result.get('data', {}).get('batch_id')
+        self.assertTrue(batch_id)
+
+        status_response = self.url_open(
+            '/api/v1/reservation/status/%s' % batch_id,
+            headers={'Authorization': 'Bearer %s' % token_raw},
+        )
+        self.assertEqual(status_response.status_code, 200)
+        status_body = status_response.json()
+        self.assertEqual(status_body.get('status'), 'success')
+        self.assertEqual(status_body.get('data', {}).get('batch_id'), batch_id)
+
     def test_api_aaa_flow_jsonrpc_create_then_allocate(self):
         """Runs first among api_* HTTP tests (before test_api_allocate_*) so the cursor is clean for DB writes."""
         token_raw = self._make_token_for_user(self.env.ref('base.user_admin'))

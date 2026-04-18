@@ -72,8 +72,22 @@ class StockReservationBatch(models.Model):
 
     def action_cancel(self):
         for batch in self:
-            batch.line_ids.filtered(lambda l: l.state != 'allocated').write({'state': 'cancelled'})
-            batch.state = 'cancelled'
+            pickings = batch.picking_ids.filtered(lambda p: p.state not in ('cancel', 'done'))
+            if pickings:
+                pickings.action_cancel()
+
+            moves = batch.line_ids.mapped('move_id').filtered(lambda m: m.state not in ('cancel', 'done'))
+            orphan_moves = moves.filtered(lambda m: not m.picking_id or m.picking_id.state == 'cancel')
+            if orphan_moves:
+                cancel_method = getattr(orphan_moves, '_action_cancel', None) or getattr(orphan_moves, 'action_cancel', None)
+                if cancel_method:
+                    cancel_method()
+
+            batch.line_ids.write({'state': 'cancelled'})
+            batch.write({
+                'state': 'cancelled',
+                'allocation_in_progress': False,
+            })
 
     def action_mark_done(self):
         for batch in self:

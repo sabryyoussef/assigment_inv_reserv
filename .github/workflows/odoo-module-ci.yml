@@ -1,0 +1,53 @@
+name: Odoo Module CI
+
+on:
+  push:
+    branches:
+      - main
+      - second_test
+  pull_request:
+
+jobs:
+  test-addon:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: postgres
+          POSTGRES_USER: odoo
+          POSTGRES_PASSWORD: odoo
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U odoo"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Verify Python syntax
+        run: python3 -m compileall assigment/stock_reservation_engine
+
+      - name: Pull Odoo 18 image
+        run: docker pull odoo:18.0
+
+      - name: Run module tests
+        run: |
+          docker run --rm --network host \
+            -v "$GITHUB_WORKSPACE/assigment:/mnt/extra-addons" \
+            odoo:18.0 \
+            odoo \
+            --db_host 127.0.0.1 \
+            --db_port 5432 \
+            --db_user odoo \
+            --db_password odoo \
+            --database ci_stock_reservation \
+            --without-demo=all \
+            --addons-path=/mnt/extra-addons,/usr/lib/python3/dist-packages/odoo/addons \
+            -i stock_reservation_engine \
+            --test-enable \
+            --stop-after-init
