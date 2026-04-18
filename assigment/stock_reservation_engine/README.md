@@ -286,7 +286,7 @@ No **`TransactionCase`** / **`HttpCase`** targets the dashboard views. Validate 
 | `stock.reservation.line` | `company_id` (related, stored) | B-tree | Cross-company filtering |
 | `stock.reservation.line` | `request_user_id` (related, stored) | B-tree | Aligns with line record rules |
 | `stock.reservation.line` | `move_id` | B-tree | Move / picking linkage |
-| `reservation.api.token` | `token` (SHA-256 hash) | B-tree | Auth lookup on API requests (`index=True` on field; **no SQL UNIQUE constraint** in module code) |
+| `reservation.api.token` | `token` (SHA-256 hash) | B-tree | Auth lookup on API requests |
 
 Fields above use **`index=True`** where declared; Odoo creates B-tree indexes accordingly.
 
@@ -297,19 +297,51 @@ Fields above use **`index=True`** where declared; Odoo creates B-tree indexes ac
 | `stock.reservation.line` | `requested_qty > 0` | SQL CHECK |
 | `stock.reservation.line` | `allocated_qty >= 0` | SQL CHECK |
 | `stock.reservation.line` | `allocated_qty <= requested_qty` | ORM `@api.constrains` |
+| `reservation.api.token` | `token` unique | SQL UNIQUE |
 
 ### Why these matter at scale
 
 - Record rules on **`request_user_id`** add **`WHERE request_user_id = …`** to user queries; indexing avoids sequential scans as batch/line tables grow.
 - **`state`** supports dashboard graph/pivot aggregations over lines.
 - **`product_id`** and **`location_id`** align with allocation **`stock.quant`** domains.
-- **`token`** indexing speeds Bearer resolution; uniqueness is not enforced at DB level in this module.
+- **`token`** uniqueness is enforced at DB level via **`_sql_constraints`** **`UNIQUE(token)`** (hashed secret); indexing speeds lookups.
 
 ---
 
 ## Concurrency strategy
 
-Application-level: states, **`allocation_in_progress`**, single move per line refresh, picking skip when **`picking_id`** set. **Not** a substitute for database row locking under high contention.
+### Risks
+
+| Scenario | Risk |
+| --- | --- |
+| Two users allocate the same batch simultaneously | **`allocation_in_progress`** flag blocks the second call with **`UserError`** |
+| Two users allocate **different** batches competing for the same quant | Over-allocation possible — both read the same **`quantity`** before either writes |
+| API retries on network timeout | Duplicate allocation attempt; idempotency guards (move + picking skip) prevent duplicate records |
+
+### Current application-level safeguards
+
+- **`allocation_in_progress`** boolean: set to **`True`** at start of **`_action_allocate_single`**, cleared in **`finally`**. Same-batch concurrent calls raise **`UserError`**.
+- State checks: only **`draft`**, **`confirmed`**, **`partial`** batches can be allocated.
+- Move idempotency: lines with existing **`move_id`** refresh qty rather than creating duplicates.
+- Picking idempotency: moves already on a picking are skipped by **`_generate_pickings_from_allocated_moves`**.
+
+### Proposed production solution (not yet implemented)
+
+```sql
+SELECT id, quantity, reserved_quantity
+FROM stock_quant
+WHERE product_id = %s AND location_id = ANY(%s)
+FOR UPDATE SKIP LOCKED;
+```
+
+- **`FOR UPDATE SKIP LOCKED`** on candidate quants inside the allocation transaction prevents two concurrent allocations from reading the same available quantity.
+- If a quant is locked by another transaction, **`SKIP LOCKED`** skips it rather than blocking, which is safer than **`FOR UPDATE`** in high-throughput scenarios.
+- Alternatively: a dedicated **`stock.reservation.lock`** table with one row per **`(product_id, location_id, company_id)`** can serialize allocation across batches without locking the full quant table.
+- Odoo's own **`_update_available_quantity`** uses **`SELECT FOR UPDATE`** internally — aligning reservation allocation with this pattern is the correct production path.
+
+### Why not implemented now
+
+Assignment scope specifies design-level concurrency explanation. The application guards are sufficient for single-server, moderate-load environments. The **`SELECT FOR UPDATE`** path requires wrapping the entire **`_allocate_line`** loop in a savepoint-aware transaction context, which is a non-trivial change tested under load — deferred to a follow-up sprint.
 
 ---
 

@@ -13,6 +13,10 @@ class ReservationApiToken(models.Model):
     token = fields.Char(required=True, copy=False, index=True)
     active = fields.Boolean(default=True)
 
+    _sql_constraints = [
+        ('token_unique', 'UNIQUE(token)', 'API token hash must be unique.'),
+    ]
+
     @staticmethod
     def _hash_token(raw_token):
         return hashlib.sha256(raw_token.encode()).hexdigest()
