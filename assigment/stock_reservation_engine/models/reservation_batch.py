@@ -381,10 +381,16 @@ class StockReservationBatch(models.Model):
     def action_view_moves(self):
         self.ensure_one()
         moves = self.line_ids.mapped('move_id')
-        action = self.env.ref('stock.action_moves_all').read()[0]
-        action['domain'] = [('id', 'in', moves.ids)]
-        action['context'] = dict(self.env.context, create=False)
-        return action
+        # Inline action: avoids relying on stock menu XML ids (they differ by version)
+        # and survives outdated .pyc if the server was not restarted after an upgrade.
+        return {
+            'type': 'ir.actions.act_window',
+            'name': _('Stock Moves'),
+            'res_model': 'stock.move',
+            'view_mode': 'list,form',
+            'domain': [('id', 'in', moves.ids)],
+            'context': dict(self.env.context, create=False),
+        }
 
     def action_view_pickings(self):
         self.ensure_one()
