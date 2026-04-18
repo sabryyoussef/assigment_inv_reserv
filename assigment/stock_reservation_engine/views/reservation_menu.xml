@@ -1,5 +1,24 @@
 <odoo>
-    <menuitem id="menu_stock_reservation_root" name="Stock Reservations" parent="stock.menu_stock_root" sequence="95" groups="stock_reservation_engine.group_stock_reservation_user,stock_reservation_engine.group_stock_reservation_manager"/>
-    <menuitem id="menu_stock_reservation_batches" name="Reservation Batches" parent="menu_stock_reservation_root" action="action_stock_reservation_batch" sequence="10" groups="stock_reservation_engine.group_stock_reservation_user,stock_reservation_engine.group_stock_reservation_manager"/>
-    <menuitem id="menu_reservation_api_tokens" name="API Tokens" parent="menu_stock_reservation_root" action="action_reservation_api_token" sequence="20" groups="stock_reservation_engine.group_stock_reservation_manager"/>
+    <!-- Nested menuitems: children are linked to parent in one pass (reliable submenu loading). -->
+    <menuitem id="menu_stock_reservation_root"
+              name="Stock Reservations"
+              parent="stock.menu_stock_root"
+              sequence="95"
+              groups="stock_reservation_engine.group_stock_reservation_user,stock_reservation_engine.group_stock_reservation_manager">
+        <menuitem id="menu_stock_reservation_dashboard"
+                  name="Dashboard"
+                  action="stock_reservation_engine.action_reservation_dashboard"
+                  sequence="5"
+                  groups="stock_reservation_engine.group_stock_reservation_user,stock_reservation_engine.group_stock_reservation_manager"/>
+        <menuitem id="menu_stock_reservation_batches"
+                  name="Reservation Batches"
+                  action="stock_reservation_engine.action_stock_reservation_batch"
+                  sequence="10"
+                  groups="stock_reservation_engine.group_stock_reservation_user,stock_reservation_engine.group_stock_reservation_manager"/>
+        <menuitem id="menu_reservation_api_tokens"
+                  name="API Tokens"
+                  action="stock_reservation_engine.action_reservation_api_token"
+                  sequence="20"
+                  groups="stock_reservation_engine.group_stock_reservation_manager"/>
+    </menuitem>
 </odoo>

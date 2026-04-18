@@ -1,6 +1,6 @@
 {
     'name': 'Stock Reservation Engine',
-    'version': '18.0.1.6.4',
+    'version': '18.0.1.6.6',
     'summary': 'Reservation and allocation engine with API exposure',
     'description': """
 Stock reservation and allocation engine with FEFO/FIFO logic, HTTP API, and demo data.
@@ -25,6 +25,7 @@ Screenshots and visuals live under standard Odoo paths: ``static/description/scr
         'data/demo_inventory_master.xml',
         'data/reservation_demo_data.xml',
         'views/reservation_batch_views.xml',
+        'views/reservation_dashboard_views.xml',
         'views/api_token_views.xml',
         'views/reservation_menu.xml',
     ],
