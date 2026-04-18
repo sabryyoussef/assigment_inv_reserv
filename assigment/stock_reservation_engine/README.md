@@ -247,6 +247,16 @@ The most important query is the `stock.quant` lookup filtered by:
 ### Scaling approach
 The current implementation is intentionally simple and clear. A future optimization would group lines by product and location to reuse quant result sets and reduce repeated searches when many lines target the same product.
 
+### Sample log output
+Actual output from a 2-line allocation run against the demo dataset:
+
+```
+2026-04-18 07:24:50,135 20828 INFO odoo18 odoo.addons.stock_reservation_engine.models.reservation_batch: Starting allocation for reservation batch RES00018 user=admin id=2
+2026-04-18 07:24:50,236 20828 INFO odoo18 odoo.addons.stock_reservation_engine.models.reservation_batch: Finished allocation for reservation batch RES00018 state=allocated lines=2 moves=2
+```
+
+The 101 ms elapsed time covers two `stock.quant` searches (one per line), FEFO/FIFO ordering, `allocated_qty` writes, and two `stock.move` creates — all within a single transaction.
+
 ### Time complexity
 At a high level, allocation is linear in relation to the number of candidate quants returned for a line. Database ordering keeps the complexity predictable and avoids Python-side sorting overhead.
 
