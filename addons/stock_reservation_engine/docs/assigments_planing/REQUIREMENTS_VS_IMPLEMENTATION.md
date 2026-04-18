@@ -1,6 +1,6 @@
 # Assignment requirements vs current implementation
 
-This document maps the **original brief** (`ORIGINAL_ASSIGNMENT.md`) to **what the codebase delivers today** and reflects the final submission-ready state of the assignment.
+This document maps the **original brief** ([ORIGINAL_ASSIGNMENT.md](ORIGINAL_ASSIGNMENT.md)) to **what the codebase delivers today** and reflects the final submission-ready state of the assignment.
 
 Legend: **Done** = implemented and usable | **Done (extended)** = requirement met and intentionally augmented | **Done (design-level)** = meets brief’s “design / explain” scope, not full production implementation | **Partial** = simplified, conditional, or layered (see notes) | **Missing** = not delivered | **Extra** = beyond the brief.
 
@@ -160,4 +160,4 @@ These are **post-assignment enhancements**, not blockers for the current deliver
 | Automated tests ≥ minimal scenarios | **Yes** (`tests/test_reservation.py` ~15 **`TransactionCase`** methods including picking and idempotency; **`test_reservation_http.py`**; shell QA script — FEFO test skips if expiry metadata unavailable) |
 | Bonus / optional hardening | **Yes, largely delivered** — major bonus items are present; only non-essential extras like Kanban remain intentionally out of scope |
 
-For the authoritative wording of the assignment, see **`ORIGINAL_ASSIGNMENT.md`**.
+For the authoritative wording of the assignment, see [ORIGINAL_ASSIGNMENT.md](ORIGINAL_ASSIGNMENT.md).

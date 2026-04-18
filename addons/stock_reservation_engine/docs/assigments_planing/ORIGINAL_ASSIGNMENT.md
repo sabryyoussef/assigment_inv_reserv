@@ -1,5 +1,7 @@
 # Original Assignment — Stock Reservation & Allocation Engine
 
+> Historical reference: for the curated documentation entry point, start with [README.md](README.md).
+
 This document preserves the **original assignment brief** as provided for the `stock_reservation_engine` module. It is **not** the implementation README; see the root `README.md` for architecture, sprint notes, and delivery details.
 
 ---

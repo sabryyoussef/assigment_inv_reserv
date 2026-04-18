@@ -1,5 +1,7 @@
 # Assignment Completion Plan
 
+> Historical planning note: for the current documentation flow, start with [README.md](README.md).
+
 Date: 2026-04-18
 Project: stock_reservation_engine
 
