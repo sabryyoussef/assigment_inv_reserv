@@ -1,0 +1,78 @@
+<odoo>
+    <record id="view_stock_reservation_batch_tree" model="ir.ui.view">
+        <field name="name">stock.reservation.batch.tree</field>
+        <field name="model">stock.reservation.batch</field>
+        <field name="arch" type="xml">
+            <list>
+                <field name="name"/>
+                <field name="request_user_id"/>
+                <field name="state"/>
+                <field name="priority"/>
+                <field name="scheduled_date"/>
+                <field name="move_count"/>
+                <field name="picking_count"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_stock_reservation_batch_form" model="ir.ui.view">
+        <field name="name">stock.reservation.batch.form</field>
+        <field name="model">stock.reservation.batch</field>
+        <field name="arch" type="xml">
+            <form string="Reservation Batch">
+                <header>
+                    <button name="action_confirm" type="object" string="Confirm" class="btn-primary" invisible="state != 'draft'"/>
+                    <button name="action_allocate" type="object" string="Allocate" class="btn-primary" invisible="state not in ('draft', 'confirmed', 'partial')" groups="stock_reservation_engine.group_stock_reservation_user"/>
+                    <button name="action_mark_done" type="object" string="Mark Done" invisible="state != 'allocated'" groups="stock_reservation_engine.group_stock_reservation_manager"/>
+                    <button name="action_cancel" type="object" string="Cancel" invisible="state in ('done', 'cancelled')"/>
+                    <field name="state" widget="statusbar" statusbar_visible="draft,confirmed,partial,allocated,done,cancelled"/>
+                </header>
+                <sheet>
+                    <div class="oe_button_box" name="button_box">
+                        <button type="object" class="oe_stat_button" name="action_view_moves" icon="fa-exchange" invisible="move_count == 0">
+                            <field name="move_count" widget="statinfo" string="Stock Moves"/>
+                        </button>
+                        <button type="object" class="oe_stat_button" name="action_view_pickings" icon="fa-truck" invisible="picking_count == 0">
+                            <field name="picking_count" widget="statinfo" string="Transfers"/>
+                        </button>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="name" readonly="1"/>
+                            <field name="request_user_id"/>
+                            <field name="company_id" groups="base.group_multi_company"/>
+                        </group>
+                        <group>
+                            <field name="priority"/>
+                            <field name="scheduled_date"/>
+                            <field name="allocation_in_progress" readonly="1"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Lines">
+                            <field name="line_ids">
+                                <list editable="bottom">
+                                    <field name="product_id"/>
+                                    <field name="requested_qty"/>
+                                    <field name="allocated_qty" readonly="1"/>
+                                    <field name="location_id"/>
+                                    <field name="lot_id"/>
+                                    <field name="state" readonly="1"/>
+                                    <field name="move_id" readonly="1"/>
+                                    <field name="picking_id" readonly="1" optional="hide"/>
+                                </list>
+                            </field>
+                        </page>
+                    </notebook>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_stock_reservation_batch" model="ir.actions.act_window">
+        <field name="name">Reservation Batches</field>
+        <field name="res_model">stock.reservation.batch</field>
+        <field name="view_mode">list,form</field>
+    </record>
+</odoo>

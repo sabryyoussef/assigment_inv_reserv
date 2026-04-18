@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+
+        <record id="product_category_reservation_demo" model="product.category">
+            <field name="name">Reservation Demo</field>
+            <field name="parent_id" ref="product.product_category_all"/>
+        </record>
+        <record id="product_category_reservation_standard" model="product.category">
+            <field name="name">Standard</field>
+            <field name="parent_id" ref="product_category_reservation_demo"/>
+        </record>
+        <record id="product_category_reservation_perishable" model="product.category">
+            <field name="name">Perishable</field>
+            <field name="parent_id" ref="product_category_reservation_demo"/>
+        </record>
+
+        <record id="warehouse_demo_mdw" model="stock.warehouse">
+            <field name="name">Main Demo Warehouse</field>
+            <field name="code">MDW</field>
+            <field name="company_id" ref="base.main_company"/>
+        </record>
+
+        <record id="mdw_location_shelf_a" model="stock.location">
+            <field name="name">Shelf A</field>
+            <field name="usage">internal</field>
+            <field name="company_id" ref="base.main_company"/>
+            <field name="location_id" model="stock.warehouse" eval="obj(ref('stock_reservation_engine.warehouse_demo_mdw')).lot_stock_id.id"/>
+        </record>
+        <record id="mdw_location_shelf_b" model="stock.location">
+            <field name="name">Shelf B</field>
+            <field name="usage">internal</field>
+            <field name="company_id" ref="base.main_company"/>
+            <field name="location_id" model="stock.warehouse" eval="obj(ref('stock_reservation_engine.warehouse_demo_mdw')).lot_stock_id.id"/>
+        </record>
+        <record id="mdw_location_cold_zone" model="stock.location">
+            <field name="name">Cold Zone</field>
+            <field name="usage">internal</field>
+            <field name="company_id" ref="base.main_company"/>
+            <field name="location_id" model="stock.warehouse" eval="obj(ref('stock_reservation_engine.warehouse_demo_mdw')).lot_stock_id.id"/>
+            <field name="removal_strategy_id" ref="product_expiry.removal_fefo"/>
+        </record>
+        <record id="mdw_location_quality_control" model="stock.location">
+            <field name="name">Quality Control</field>
+            <field name="usage">internal</field>
+            <field name="company_id" ref="base.main_company"/>
+            <field name="location_id" model="stock.warehouse" eval="obj(ref('stock_reservation_engine.warehouse_demo_mdw')).view_location_id.id"/>
+        </record>
+
+        <record id="demo_pt_full" model="product.template">
+            <field name="name">Demo Product A</field>
+            <field name="categ_id" ref="product_category_reservation_standard"/>
+            <field name="type">consu</field>
+            <field name="is_storable" eval="True"/>
+            <field name="tracking">none</field>
+            <field name="uom_id" ref="uom.product_uom_unit"/>
+            <field name="uom_po_id" ref="uom.product_uom_unit"/>
+        </record>
+        <record id="demo_pt_partial" model="product.template">
+            <field name="name">Demo Product B</field>
+            <field name="categ_id" ref="product_category_reservation_standard"/>
+            <field name="type">consu</field>
+            <field name="is_storable" eval="True"/>
+            <field name="tracking">none</field>
+            <field name="uom_id" ref="uom.product_uom_unit"/>
+            <field name="uom_po_id" ref="uom.product_uom_unit"/>
+        </record>
+        <record id="demo_pt_empty" model="product.template">
+            <field name="name">Demo Product C</field>
+            <field name="categ_id" ref="product_category_reservation_standard"/>
+            <field name="type">consu</field>
+            <field name="is_storable" eval="True"/>
+            <field name="tracking">none</field>
+            <field name="uom_id" ref="uom.product_uom_unit"/>
+            <field name="uom_po_id" ref="uom.product_uom_unit"/>
+        </record>
+
+        <record id="demo_pt_lots" model="product.template">
+            <field name="name">Perishable Product X</field>
+            <field name="categ_id" ref="product_category_reservation_perishable"/>
+            <field name="type">consu</field>
+            <field name="is_storable" eval="True"/>
+            <field name="tracking">lot</field>
+            <field name="use_expiration_date" eval="True"/>
+            <field name="expiration_time">365</field>
+            <field name="uom_id" ref="uom.product_uom_unit"/>
+            <field name="uom_po_id" ref="uom.product_uom_unit"/>
+        </record>
+
+        <record id="demo_pt_perishable_y" model="product.template">
+            <field name="name">Perishable Product Y</field>
+            <field name="categ_id" ref="product_category_reservation_perishable"/>
+            <field name="type">consu</field>
+            <field name="is_storable" eval="True"/>
+            <field name="tracking">lot</field>
+            <field name="use_expiration_date" eval="True"/>
+            <field name="expiration_time">180</field>
+            <field name="uom_id" ref="uom.product_uom_unit"/>
+            <field name="uom_po_id" ref="uom.product_uom_unit"/>
+        </record>
+
+        <record id="demo_lot_alpha" model="stock.lot">
+            <field name="name">LOT-X-001</field>
+            <field name="product_id" model="product.template" eval="obj(ref('stock_reservation_engine.demo_pt_lots')).product_variant_ids[:1].id"/>
+            <field name="company_id" ref="base.main_company"/>
+        </record>
+        <record id="demo_lot_beta" model="stock.lot">
+            <field name="name">LOT-X-002</field>
+            <field name="product_id" model="product.template" eval="obj(ref('stock_reservation_engine.demo_pt_lots')).product_variant_ids[:1].id"/>
+            <field name="company_id" ref="base.main_company"/>
+        </record>
+        <record id="demo_lot_y_001" model="stock.lot">
+            <field name="name">LOT-Y-001</field>
+            <field name="product_id" model="product.template" eval="obj(ref('stock_reservation_engine.demo_pt_perishable_y')).product_variant_ids[:1].id"/>
+            <field name="company_id" ref="base.main_company"/>
+        </record>
+
+    </data>
+</odoo>

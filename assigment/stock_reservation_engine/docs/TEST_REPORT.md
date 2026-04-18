@@ -11,7 +11,7 @@ Adjust the interpreter (`python`, `python3`, or `py -3.12`) and paths to match t
 ## Requirements
 
 - PostgreSQL reachable using the credentials and database name declared in the Odoo configuration file.
-- Addons path (or `--addons-path`) includes the directory tree that exposes `stock_reservation_engine`, for example an `assigment`-style addons root already used by the project.
+- Addons path (or `--addons-path`) includes the directory tree that exposes `stock_reservation_engine`, for example a standard `addons` root used by the project.
 
 ## Last Verified Run
 
