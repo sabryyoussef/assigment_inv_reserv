@@ -7,7 +7,7 @@ Stock reservation and allocation engine with FEFO/FIFO logic, HTTP API, and demo
 
 Screenshots and visuals live under standard Odoo paths: ``static/description/screenshots/capture/`` (UI tour) and ``static/description/screenshots/walkthrough/`` (delivery set). See ``static/description/screenshots/README.md``.
 """,
-    'author': 'OpenAI',
+    'author': 'Sabry Youssef',
     'license': 'LGPL-3',
     'category': 'Inventory/Inventory',
     'depends': ['stock', 'mail', 'product_expiry'],
