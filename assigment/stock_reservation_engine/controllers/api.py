@@ -1,3 +1,4 @@
+import hashlib
 import json
 
 from odoo import http
@@ -19,8 +20,9 @@ class ReservationAPI(http.Controller):
         token_value = self._get_bearer_token()
         if not token_value:
             return None
+        token_hash = hashlib.sha256(token_value.encode()).hexdigest()
         token = request.env['reservation.api.token'].sudo().search([
-            ('token', '=', token_value),
+            ('token', '=', token_hash),
             ('active', '=', True),
         ], limit=1)
         return token.user_id if token else None

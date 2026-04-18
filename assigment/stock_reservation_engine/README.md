@@ -180,11 +180,14 @@ Covered scenarios:
 4. FEFO selection when lots have expiration dates
 
 ## Known Limitations
-- Full database-level locking is not implemented
-- No picking generation
-- No detailed quant allocation trace table
-- FEFO stores the first chosen lot on the line for traceability, but does not persist quant-by-quant allocation breakdown
-- API tokens are intentionally simple for sprint scope and can be extended with expiry or scope rules
+- Full database-level locking is not implemented. The `allocation_in_progress` flag is an application-level guard only. In a multi-worker environment two concurrent transactions can still read the same available quantity before either commits, potentially causing over-allocation. The production-grade solution is to lock candidate `stock.quant` rows with `SELECT ... FOR UPDATE` before the allocation loop.
+- No picking generation. The module generates `stock.move` records but does not create full `stock.picking` objects.
+- No quant allocation trace table. The chosen lot is stored on the line for traceability, but per-quant breakdown is not persisted.
+- FEFO stores the first chosen lot on the line. It does not persist a quant-by-quant breakdown.
+- No UoM conversion on reservation lines. The `uom_id` is taken from `product_id.uom_id` only. Lines with a different requested unit of measure are not supported.
+- API tokens are hashed with SHA-256 on save. Existing tokens created before this version stored their value in plaintext and must be deleted and re-created. Raw token values are never retrievable after saving.
+- The API has no rate limiting. This is acceptable for the current sprint scope. A production deployment should add throttling at the reverse-proxy or middleware level.
+- The `sudo()` scope in the API controller is intentionally broad for the sprint. Each write operation is guarded by a manual ownership or group check. A production hardening step would narrow `sudo()` to only the lookup operations and switch to `with_user(user)` for writes.
 
 ## Installation
 1. Copy the module folder into your custom addons path.
@@ -219,8 +222,10 @@ Covered scenarios:
 - Expected result: the line prefers the earliest expiration lot
 
 ## Future Improvements
-- Full concurrency-safe allocation with SQL row locking
-- Quant allocation trace model
+- Full concurrency-safe allocation with SQL row locking (`SELECT FOR UPDATE` on `stock.quant`)
+- Quant allocation trace model for full per-quant breakdown
 - Picking generation from allocated moves
 - Batch priority scheduling across multiple pending reservations
 - API versioning and structured error codes
+- API token expiry dates and scope restrictions
+- Rate limiting at API layer

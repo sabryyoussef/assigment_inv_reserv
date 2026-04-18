@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime
 
 from odoo import _, api, fields, models
 from odoo.exceptions import UserError
@@ -113,8 +114,16 @@ class StockReservationBatch(models.Model):
         if line.lot_id:
             domain.append(('lot_id', '=', line.lot_id.id))
 
-        order = self._get_quant_order(line)
-        quants = self.env['stock.quant'].search(domain, order=order)
+        use_fefo = self._get_quant_order(line)
+        quants = self.env['stock.quant'].search(domain, order='in_date asc, id asc')
+        if use_fefo:
+            quants = quants.sorted(
+                key=lambda q: (
+                    q.lot_id.expiration_date if (q.lot_id and q.lot_id.expiration_date) else datetime.max,
+                    q.in_date or datetime.min,
+                    q.id,
+                )
+            )
 
         for quant in quants:
             if remaining <= 0:
@@ -147,9 +156,7 @@ class StockReservationBatch(models.Model):
         if line.lot_id:
             domain.append(('lot_id', '=', line.lot_id.id))
         quant_with_expiry = Quant.search(domain, limit=1).filtered(lambda q: q.lot_id and q.lot_id.expiration_date)
-        if quant_with_expiry:
-            return 'lot_id.expiration_date asc, in_date asc, id asc'
-        return 'in_date asc, id asc'
+        return bool(quant_with_expiry)
 
     def _compute_line_state(self, requested_qty, allocated_qty):
         if allocated_qty <= 0:
@@ -163,6 +170,8 @@ class StockReservationBatch(models.Model):
             states = batch.line_ids.mapped('state')
             if not states:
                 batch.state = 'draft'
+            elif all(state == 'cancelled' for state in states):
+                batch.state = 'cancelled'
             elif all(state == 'allocated' for state in states):
                 batch.state = 'allocated'
             elif any(state in ['partial', 'not_available'] for state in states):
@@ -175,7 +184,12 @@ class StockReservationBatch(models.Model):
         if line.allocated_qty <= 0:
             raise UserError(_('Cannot generate a stock move for zero allocated quantity.'))
         output_location = self.env.ref('stock.stock_location_output', raise_if_not_found=False)
-        dest_location = output_location.id if output_location else line.location_id.id
+        if not output_location:
+            raise UserError(_(
+                'The output location (stock.stock_location_output) was not found. '
+                'Please ensure the stock module is properly configured.'
+            ))
+        dest_location = output_location.id
         return self.env['stock.move'].create({
             'name': _('Reservation %s') % self.name,
             'company_id': self.company_id.id,
