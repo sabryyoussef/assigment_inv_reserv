@@ -1,0 +1,21 @@
+{
+    'name': 'Stock Reservation Engine',
+    'version': '18.0.1.0.0',
+    'summary': 'Reservation and allocation engine with API exposure',
+    'description': 'Custom stock reservation and allocation engine with FEFO/FIFO logic, API layer, and engineering-focused README.',
+    'author': 'OpenAI',
+    'license': 'LGPL-3',
+    'category': 'Inventory/Inventory',
+    'depends': ['stock', 'mail'],
+    'data': [
+        'security/reservation_security.xml',
+        'security/ir.model.access.csv',
+        'data/sequence.xml',
+        'views/reservation_batch_views.xml',
+        'views/api_token_views.xml',
+        'views/reservation_menu.xml',
+    ],
+    'demo': [],
+    'installable': True,
+    'application': True,
+}
