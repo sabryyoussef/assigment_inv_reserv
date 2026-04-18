@@ -120,6 +120,43 @@ class TestReservationApiHttp(HttpCase):
         res = response.json().get('result') or {}
         self.assertEqual(res.get('code'), 'ERR_VALIDATION')
 
+    def test_api_create_validation_line_must_be_object(self):
+        token_raw = self._make_token_for_user(self.env.ref('base.user_admin'))
+        self._flush()
+        response = self.url_open(
+            '/api/reservation/create',
+            data=_rpc_json(5, {
+                'lines': ['bad-line'],
+            }),
+            headers={
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer %s' % token_raw,
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        res = response.json().get('result') or {}
+        self.assertEqual(res.get('code'), 'ERR_VALIDATION')
+        self.assertIn('object', (res.get('message') or '').lower())
+
+    def test_api_create_accepts_lowercase_bearer(self):
+        token_raw = self._make_token_for_user(self.env.ref('base.user_admin'))
+        variant, loc = self._make_storable_variant_with_stock(6.0)
+        self._flush()
+        response = self.url_open(
+            '/api/reservation/create',
+            data=_rpc_json(6, {
+                'lines': [{'product_id': variant.id, 'qty': 2, 'location_id': loc.id}],
+            }),
+            headers={
+                'Content-Type': 'application/json',
+                'Authorization': 'bearer %s' % token_raw,
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        result = body.get('result') or {}
+        self.assertEqual(result.get('status'), 'success', msg=body)
+
     def test_api_aaa_flow_jsonrpc_create_then_allocate(self):
         """Runs first among api_* HTTP tests (before test_api_allocate_*) so the cursor is clean for DB writes."""
         token_raw = self._make_token_for_user(self.env.ref('base.user_admin'))

@@ -56,6 +56,8 @@ The test class sets `readonly_enabled = False`. Odoo’s HTTP test harness can s
 | `test_api_create_inactive_token_unauthorized` | Create route rejects inactive tokens. |
 | `test_api_create_validation_empty_lines` | Create route validates non-empty `lines`. |
 | `test_api_create_validation_bad_line` | Create route rejects lines missing mandatory keys (`product_id`, etc.). |
+| `test_api_create_validation_line_must_be_object` | Create route rejects malformed non-object line entries with a clearer validation message. |
+| `test_api_create_accepts_lowercase_bearer` | Confirms bearer authentication is handled robustly even when the authorization scheme uses lowercase spelling. |
 | `test_api_allocate_unauthorized` | Allocate route rejects unauthenticated JSON-RPC calls. |
 | `test_api_allocate_validation_missing_batch_id` | Allocate route validates presence of `batch_id`. |
 | `test_api_allocate_not_found` | Allocate route maps unknown batch identifiers to the documented error contract. |
