@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 
 from odoo.exceptions import AccessError, UserError
 
+from odoo import sql_db
 from odoo.tests import tagged
 from odoo.tests.common import TransactionCase
 
@@ -241,20 +242,30 @@ class TestStockReservation(TransactionCase):
             self.assertEqual(line.state, 'allocated')
 
     def test_allocate_raises_when_quant_rows_are_locked(self):
-        stocked = self._add_stock(self.product, self.stock_location, 8.0)
-        if not stocked:
-            self.skipTest('Requires storable product with quants')
+        demo_product = self.env.ref('stock_reservation_engine.demo_pt_full').product_variant_ids[:1]
+        demo_location = self.env.ref('stock_reservation_engine.warehouse_demo_mdw').lot_stock_id
 
-        batch = self._create_batch(self.product, 3.0)
         quant = self.env['stock.quant'].search([
-            ('product_id', '=', self.product.id),
-            ('location_id', 'child_of', self.stock_location.id),
+            ('product_id', '=', demo_product.id),
+            ('location_id', 'child_of', demo_location.id),
             ('quantity', '>', 0),
             ('company_id', '=', self.env.company.id),
         ], limit=1)
-        self.assertTrue(quant)
+        if not quant:
+            self.skipTest('Committed demo quant not available for lock regression test')
 
-        with self.env.registry.cursor() as cr2:
+        batch = self.env['stock.reservation.batch'].create({
+            'request_user_id': self.env.user.id,
+            'line_ids': [(0, 0, {
+                'product_id': demo_product.id,
+                'requested_qty': 3.0,
+                'location_id': demo_location.id,
+            })]
+        })
+        batch.action_confirm()
+
+        db = sql_db.db_connect(self.env.cr.dbname)
+        with db.cursor() as cr2:
             cr2.execute('SELECT id FROM stock_quant WHERE id = %s FOR UPDATE', [quant.id])
             with self.assertRaises(UserError):
                 batch.action_allocate()
