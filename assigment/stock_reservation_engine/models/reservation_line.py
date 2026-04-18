@@ -22,7 +22,7 @@ class StockReservationLine(models.Model):
         ('partial', 'Partial'),
         ('allocated', 'Allocated'),
         ('cancelled', 'Cancelled'),
-    ], default='draft', required=True, tracking=True, index=True)
+    ], default='draft', required=True, index=True)
     move_id = fields.Many2one('stock.move', string='Generated Move', readonly=True, copy=False, index=True)
     note = fields.Char()
 
