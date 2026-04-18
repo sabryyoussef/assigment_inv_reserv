@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
 """Demo inventory levels (idempotent). Used by post_init_hook and migrations."""
 import logging
+from datetime import timedelta
+
+from odoo import fields
 
 _logger = logging.getLogger(__name__)
 
@@ -10,11 +13,25 @@ def post_init_hook(env):
 
 
 def ensure_demo_stock(env):
-    """Set on-hand quantities for demo products; safe to call multiple times."""
+    """Apply intended on-hand quantities for demo products. Safe to call multiple times."""
     if not env.ref('stock_reservation_engine.demo_pt_full', raise_if_not_found=False):
         return
-    wh_loc = env.ref('stock.warehouse0').lot_stock_id
-    shelf_loc = env.ref('stock_reservation_engine.demo_location_shelf', raise_if_not_found=False)
+    if not env.ref('stock_reservation_engine.warehouse_demo_mdw', raise_if_not_found=False):
+        return
+
+    wh = env.ref('stock_reservation_engine.warehouse_demo_mdw').sudo()
+    lot_stock = wh.lot_stock_id
+    shelf_a = env.ref('stock_reservation_engine.mdw_location_shelf_a').sudo()
+    shelf_b = env.ref('stock_reservation_engine.mdw_location_shelf_b').sudo()
+    cold = env.ref('stock_reservation_engine.mdw_location_cold_zone').sudo()
+
+    pa = env.ref('stock_reservation_engine.demo_pt_full').product_variant_ids[:1]
+    pb = env.ref('stock_reservation_engine.demo_pt_partial').product_variant_ids[:1]
+    px = env.ref('stock_reservation_engine.demo_pt_lots').product_variant_ids[:1]
+
+    lot_alpha = env.ref('stock_reservation_engine.demo_lot_alpha').sudo()
+    lot_beta = env.ref('stock_reservation_engine.demo_lot_beta').sudo()
+
     Quant = env['stock.quant']
 
     def add_to_target(product, location, target_qty, lot=None):
@@ -26,36 +43,23 @@ def ensure_demo_stock(env):
             return
         Quant._update_available_quantity(product, location, delta, lot_id=lot)
 
-    # Simple products @ main stock
-    add_to_target(
-        env.ref('stock_reservation_engine.demo_pt_full').product_variant_ids[:1],
-        wh_loc,
-        50.0,
-    )
-    add_to_target(
-        env.ref('stock_reservation_engine.demo_pt_partial').product_variant_ids[:1],
-        wh_loc,
-        25.0,
-    )
-    # demo_pt_empty: intentionally no stock
+    # Demo Product A: split across Shelf A and Shelf B only (parent MDW/Stock uses child_of)
+    add_to_target(pa, shelf_a, 35.0)
+    add_to_target(pa, shelf_b, 35.0)
 
-    # Child location: stock only on shelf (tests location child_of aggregation)
-    if shelf_loc:
-        add_to_target(
-            env.ref('stock_reservation_engine.demo_pt_shelf_only').product_variant_ids[:1],
-            shelf_loc,
-            12.0,
-        )
+    # Demo Product B: low quantity on main stock (partial allocation vs request 40)
+    add_to_target(pb, lot_stock, 12.0)
 
-    # Lot-tracked product: stock on LOT-ALPHA only
-    lot_a = env.ref('stock_reservation_engine.demo_lot_alpha', raise_if_not_found=False)
-    p_lots = env.ref('stock_reservation_engine.demo_pt_lots', raise_if_not_found=False)
-    if lot_a and p_lots:
-        add_to_target(
-            p_lots.product_variant_ids[:1],
-            wh_loc,
-            18.0,
-            lot=lot_a,
-        )
+    # Demo Product C: intentionally no stock
 
-    _logger.info('stock_reservation_engine: demo stock levels ensured')
+    # Perishable X: two lots in Cold Zone (expiration ordering set below)
+    add_to_target(px, cold, 12.0, lot=lot_alpha)
+    add_to_target(px, cold, 14.0, lot=lot_beta)
+
+    # Perishable Product Y: no stock (supports preferred-lot-not-available scenario)
+
+    now = fields.Datetime.now()
+    lot_alpha.write({'expiration_date': now + timedelta(days=90)})
+    lot_beta.write({'expiration_date': now + timedelta(days=365)})
+
+    _logger.info('stock_reservation_engine: demo stock levels ensured (MDW)')
