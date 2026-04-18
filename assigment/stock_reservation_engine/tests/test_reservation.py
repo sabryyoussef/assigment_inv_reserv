@@ -15,13 +15,13 @@ class TestStockReservation(TransactionCase):
         cls.uom_unit = cls.env.ref('uom.product_uom_unit')
         cls.product = cls.env['product.template'].create({
             'name': 'Reservation Product',
-            'detailed_type': 'storable',
+            'type': 'consu',
             'uom_id': cls.uom_unit.id,
             'uom_po_id': cls.uom_unit.id,
         }).product_variant_ids[0]
         cls.lot_product = cls.env['product.template'].create({
             'name': 'Lot Reservation Product',
-            'detailed_type': 'storable',
+            'type': 'consu',
             'tracking': 'lot',
             'uom_id': cls.uom_unit.id,
             'uom_po_id': cls.uom_unit.id,
