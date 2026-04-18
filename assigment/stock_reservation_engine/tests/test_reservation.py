@@ -139,6 +139,30 @@ class TestStockReservation(TransactionCase):
         batch.action_cancel()
         self.assertEqual(batch.state, 'cancelled')
 
+    def test_cancel_cancels_linked_pickings(self):
+        stocked = self._add_stock(self.product, self.stock_location, 8.0)
+        if not stocked:
+            self.skipTest('Requires storable product with quants')
+        batch = self._create_batch(self.product, 4.0)
+        batch.action_allocate()
+        self.assertTrue(batch.picking_ids)
+        picking = batch.picking_ids[0]
+        self.assertNotEqual(picking.state, 'cancel')
+
+        batch.action_cancel()
+        batch.invalidate_recordset()
+        picking.invalidate_recordset()
+
+        self.assertEqual(batch.state, 'cancelled')
+        self.assertTrue(all(line.state == 'cancelled' for line in batch.line_ids))
+        self.assertEqual(picking.state, 'cancel')
+
+    def test_dashboard_action_configuration(self):
+        action = self.env.ref('stock_reservation_engine.action_reservation_dashboard')
+        self.assertEqual(action.res_model, 'stock.reservation.line')
+        self.assertIn('graph', action.view_mode)
+        self.assertIn('pivot', action.view_mode)
+
     def test_confirm_without_lines_raises(self):
         batch = self.env['stock.reservation.batch'].create({
             'request_user_id': self.env.user.id,

@@ -109,7 +109,10 @@ class ReservationAPI(http.Controller):
             raise UserError('batch_id must be a positive integer.')
         return batch_id
 
-    @http.route('/api/reservation/create', type='json', auth='none', methods=['POST'], csrf=False)
+    @http.route([
+        '/api/reservation/create',
+        '/api/v1/reservation/create',
+    ], type='json', auth='none', methods=['POST'], csrf=False)
     def create_reservation(self, **payload):
         user = self._authenticate()
         if not user:
@@ -140,7 +143,10 @@ class ReservationAPI(http.Controller):
             _logger.exception('Unexpected error while creating reservation via API')
             return self._json_fail('Unexpected server error.', code=self._ERR_INTERNAL)
 
-    @http.route('/api/reservation/allocate', type='json', auth='none', methods=['POST'], csrf=False)
+    @http.route([
+        '/api/reservation/allocate',
+        '/api/v1/reservation/allocate',
+    ], type='json', auth='none', methods=['POST'], csrf=False)
     def allocate_reservation(self, **payload):
         user = self._authenticate()
         if not user:
@@ -166,7 +172,10 @@ class ReservationAPI(http.Controller):
             _logger.exception('Unexpected error while allocating reservation via API')
             return self._json_fail('Unexpected server error.', code=self._ERR_INTERNAL)
 
-    @http.route('/api/reservation/status/<int:batch_id>', type='http', auth='none', methods=['GET'], csrf=False)
+    @http.route([
+        '/api/reservation/status/<int:batch_id>',
+        '/api/v1/reservation/status/<int:batch_id>',
+    ], type='http', auth='none', methods=['GET'], csrf=False)
     def reservation_status(self, batch_id, **kwargs):
         user = self._authenticate()
         if not user:

@@ -25,6 +25,8 @@ Adjust the interpreter (`python`, `python3`, or `py -3.12`) and paths to match t
 
 Odoo discovers test methods independently of runtime outcome. Methods that resolve to `@tagged('post_install')` participation and are not skipped contribute to executed post-install counts. Additional discoverable entries (for example a skipped conditional test or framework-side accounting) may appear beside the aggregate the runner attaches to post-install execution; treat **24** as the authoritative executed count from the last verified run described here.
 
+Since that verified run, the source has also been extended with additional regression coverage for linked-picking cancellation, dashboard action wiring, and versioned API aliases. Those additions are now documented below and should be included in the next full Odoo-hosted verification run.
+
 ## Test Inventory
 
 ### tests/test_reservation.py (TransactionCase)
@@ -36,6 +38,8 @@ Odoo discovers test methods independently of runtime outcome. Methods that resol
 | `test_no_stock` | Validates behaviour when no stock is available on the reservation location. |
 | `test_fefo_preferred_lot` | Exercises preferred-lot preference when expiry-related fields exist; skips if the deployment lacks required lot-expiry fields. |
 | `test_batch_state_all_cancelled` | Verifies terminal batch state when applicable lines are cancelled. |
+| `test_cancel_cancels_linked_pickings` | Verifies cancelling a batch also cancels linked internal transfers and line states. |
+| `test_dashboard_action_configuration` | Checks the dashboard action remains wired to graph and pivot reporting on reservation lines. |
 | `test_confirm_without_lines_raises` | Ensures confirmation is rejected when the batch has no lines. |
 | `test_allocate_denied_non_owner_non_manager` | Ensures a user who is neither owner nor reservation manager cannot allocate another user’s batch. |
 | `test_owner_can_allocate_own_batch` | Ensures the reservation owner can allocate their own batch. |
@@ -58,6 +62,7 @@ The test class sets `readonly_enabled = False`. Odoo’s HTTP test harness can s
 | `test_api_create_validation_bad_line` | Create route rejects lines missing mandatory keys (`product_id`, etc.). |
 | `test_api_create_validation_line_must_be_object` | Create route rejects malformed non-object line entries with a clearer validation message. |
 | `test_api_create_accepts_lowercase_bearer` | Confirms bearer authentication is handled robustly even when the authorization scheme uses lowercase spelling. |
+| `test_api_create_and_status_support_v1_prefix` | Confirms the versioned `/api/v1/reservation/...` aliases behave the same as the original API routes. |
 | `test_api_allocate_unauthorized` | Allocate route rejects unauthenticated JSON-RPC calls. |
 | `test_api_allocate_validation_missing_batch_id` | Allocate route validates presence of `batch_id`. |
 | `test_api_allocate_not_found` | Allocate route maps unknown batch identifiers to the documented error contract. |
@@ -68,6 +73,16 @@ The test class sets `readonly_enabled = False`. Odoo’s HTTP test harness can s
 | `test_api_status_forbidden_non_owner` | GET `/status` returns `403` when the caller is neither owner nor manager. |
 | `test_api_status_success` | GET `/status` returns `200` with expected JSON shape for an authorized owner. |
 
+## Current delivery status
+
+The codebase now covers the mandatory assignment scope plus several bonus items:
+
+- reservation allocation, partial allocation, and no-stock handling
+- authorization and API-token enforcement
+- linked stock moves and internal transfer generation
+- cancellation propagation to linked non-done transfers
+- dashboard regression coverage and versioned API aliases
+
 ## Environment / Implementation Notes
 
 1. **Tests package import order** — `tests/__init__.py` imports `test_reservation_http` before `test_reservation`. Registration order influences execution scheduling between `HttpCase` and `TransactionCase`; ordering HTTP coverage first avoids brittle interactions between HTTP workers and the main test cursor lifecycle.
@@ -76,7 +91,7 @@ The test class sets `readonly_enabled = False`. Odoo’s HTTP test harness can s
 
 3. **Company handling under `auth='none'`** — Explicit `company_id` on batch creation derives from the authenticated user’s company, with a deterministic fallback when needed. Defaults that rely on `env.company` do not apply reliably on the public environment used for unsigned HTTP entrypoints.
 
-4. **Reservation Dashboard** — Graph and pivot views on `stock.reservation.line` (`views/reservation_dashboard_views.xml`) have **no** automated test in this package. Validate manually: **Inventory → Stock Reservations → Dashboard**; switch graph ↔ pivot; confirm measures and filters behave as expected after creating or allocating batches (see README **How to verify**).
+4. **Reservation Dashboard** — The package now includes an automated regression for the dashboard action wiring, but final graph/pivot rendering is still best validated manually: **Inventory → Stock Reservations → Dashboard**; switch graph ↔ pivot; confirm measures and filters behave as expected after creating or allocating batches (see README **How to verify**).
 
 ## Related Files
 

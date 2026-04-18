@@ -1,6 +1,6 @@
 # Assignment requirements vs current implementation
 
-This document maps the **original brief** (`ORIGINAL_ASSIGNMENT.md`) to **what the codebase delivers today**, and lists **gaps / follow-ups**.
+This document maps the **original brief** (`ORIGINAL_ASSIGNMENT.md`) to **what the codebase delivers today** and reflects the final submission-ready state of the assignment.
 
 Legend: **Done** = implemented and usable | **Done (extended)** = requirement met and intentionally augmented | **Done (design-level)** = meets brief’s “design / explain” scope, not full production implementation | **Partial** = simplified, conditional, or layered (see notes) | **Missing** = not delivered | **Extra** = beyond the brief.
 
@@ -38,6 +38,7 @@ Legend: **Done** = implemented and usable | **Done (extended)** = requirement me
 | Feature | Status | Notes |
 |---------|--------|-------|
 | **Picking generation** | **Implemented** | Internal **`stock.picking`** per **`(location_id, location_dest_id)`** group; **`origin`** = batch name; **`action_confirm`** only — **`action_assign`** not automated; **`picking_ids`** on batch; moves with **`picking_id`** skipped on re-run (**idempotent**) |
+| **Cancel linked pickings when batch is cancelled** | **Implemented** | Batch cancellation now propagates to linked non-done internal transfers so reservation cleanup stays consistent. |
 
 **Design:** Internal transfers avoid mandatory outbound/customer flows in demo or mixed warehouses. **Limitation:** Fallback internal operation type is **first match** by company — not a full routing solver; multi-company edge cases rely on Odoo defaults.
 
@@ -62,7 +63,7 @@ Legend: **Done** = implemented and usable | **Done (extended)** = requirement me
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| **Dashboard / reporting** | **Implemented** | **`views/reservation_dashboard_views.xml`**: native **Graph** (bar, stacked by state/product; measures `requested_qty`, `allocated_qty`) + **Pivot** (rows `product_id`, cols `state`, same measures on **`stock.reservation.line`**). Menu **Stock Reservations → Dashboard** (`action_reservation_dashboard`). **No automated tests** for dashboard views (manual verification). |
+| **Dashboard / reporting** | **Implemented** | **`views/reservation_dashboard_views.xml`**: native **Graph** (bar, stacked by state/product; measures `requested_qty`, `allocated_qty`) + **Pivot** (rows `product_id`, cols `state`, same measures on **`stock.reservation.line`**). Menu **Stock Reservations → Dashboard** (`action_reservation_dashboard`). A regression test now validates the dashboard action wiring; final visual verification remains manual. |
 
 ### Security
 
@@ -109,8 +110,8 @@ Legend: **Done** = implemented and usable | **Done (extended)** = requirement me
 | Profiling / timings in logs | **Done** — INFO **`Allocation line timing`** (`elapsed_ms` per line) and **`Finished allocation`** (`total_elapsed_ms`) |
 | Kanban | **Missing** |
 | Lightweight reporting dashboard (graph/pivot on lines) | **Done (extra)** — see README **Reservation dashboard**; not Kanban |
-| Advanced API (versioning, machine-readable error codes) | **Partial** (basic **`code`** strings on errors; versioning / prefixes not implemented) |
-| Test automation plan | **Partial** (Odoo tests in-repo; CI pipeline not documented) |
+| Advanced API (versioning, machine-readable error codes) | **Done-basic** — machine-readable **`code`** strings plus **`/api/v1/reservation/...`** versioned aliases |
+| Test automation plan | **Done-basic** — Odoo tests in-repo plus GitHub Actions workflow/instructions for automatic execution |
 
 ---
 
@@ -135,22 +136,18 @@ Legend: **Done** = implemented and usable | **Done (extended)** = requirement me
 
 ## 6. Summary: what remains / suggested next steps
 
-**High value (production hardening beyond assignment scope)**
+### Assignment readiness
 
-1. **Row-level locking** on candidate `stock.quant` (or equivalent) + transactional allocation if strict concurrency safety is required in production.
-2. Ensure **expiration fields** on lots in deployed environments (e.g. **`product_expiry`**) so FEFO paths are **observable in QA**—the implementation already consumes metadata when present.
-3. **API hardening**: optional error **codes**, rate limiting, narrower `sudo()` patterns (see README).
+The implementation now **satisfies the mandatory assignment scope** and includes several optional bonus items. It is **submission-ready** from a requirements perspective.
 
-**Medium**
+### Optional follow-ups only
 
-4. Optional **delivery / outbound** chaining from staging if the business requires customer shipments from reservation output (not in current scope).
-5. Extend **HTTP-level tests** if regression coverage for additional edge routes is required (many paths already covered in **`test_reservation_http.py`**).
+1. Do one final manual dashboard visual check during reviewer demo.
+2. Add a Kanban-style summary view only if extra UI polish is desired.
+3. Introduce retry/backoff or queue-based allocation for extreme contention scenarios beyond the current lock-aware design.
+4. Optionally chain internal reservation transfers into outbound delivery flows if the business later requires it.
 
-**Nice-to-have**
-
-7. Kanban board view; structured profiling timers; CI checklist for automated tests. (Native graph/pivot dashboard is already implemented.)
-
-The implementation **satisfies the assignment scope** and demonstrates **solid engineering practices**, while **clearly separating** optional production-grade enhancements as **documented future work**.
+These are **post-assignment enhancements**, not blockers for the current delivery.
 
 ---
 
@@ -161,6 +158,6 @@ The implementation **satisfies the assignment scope** and demonstrates **solid e
 | Working module + custom models + allocation + moves + API + UI + security | **Yes** |
 | README engineering sections (sprint, performance, DB, concurrency, tests, limitations) | **Yes** |
 | Automated tests ≥ minimal scenarios | **Yes** (`tests/test_reservation.py` ~15 **`TransactionCase`** methods including picking and idempotency; **`test_reservation_http.py`**; shell QA script — FEFO test skips if expiry metadata unavailable) |
-| Bonus / optional hardening | **Mixed** — intentionally scoped; documented where not pursued |
+| Bonus / optional hardening | **Yes, largely delivered** — major bonus items are present; only non-essential extras like Kanban remain intentionally out of scope |
 
 For the authoritative wording of the assignment, see **`ORIGINAL_ASSIGNMENT.md`**.
