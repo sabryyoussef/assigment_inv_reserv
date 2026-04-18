@@ -31,9 +31,15 @@ Legend: **Done** = implemented and usable | **Done (extended)** = requirement me
 
 | Requirement | Status | Evidence / notes |
 |-------------|--------|------------------|
-| Generate **`stock.move`** after allocation | **Done** | `_create_stock_move_for_line`; destination `stock.stock_location_output` |
+| Generate **`stock.move`** after allocation | **Done** | `_create_stock_move_for_line`; destination via `_get_reservation_destination_location` (warehouse **Pack** location, else internal picking type **default destination**; **`UserError`** if neither resolvable) |
 | Link move to line (`move_id`) | **Done** | `reservation_line.move_id` |
-| Moves reflect **allocated** quantities | **Done** | `product_uom_qty` = allocated qty |
+| Moves reflect **allocated** quantities | **Done** | `product_uom_qty` = allocated qty (refreshed on re-allocate) |
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| **Picking generation** | **Implemented** | Internal **`stock.picking`** per **`(location_id, location_dest_id)`** group; **`origin`** = batch name; **`action_confirm`** only — **`action_assign`** not automated; **`picking_ids`** on batch; moves with **`picking_id`** skipped on re-run (**idempotent**) |
+
+**Design:** Internal transfers avoid mandatory outbound/customer flows in demo or mixed warehouses. **Limitation:** Fallback internal operation type is **first match** by company — not a full routing solver; multi-company edge cases rely on Odoo defaults.
 
 ### API layer
 
@@ -51,7 +57,8 @@ Legend: **Done** = implemented and usable | **Done (extended)** = requirement me
 | Requirement | Status | Evidence / notes |
 |-------------|--------|------------------|
 | Tree + form | **Done** | `views/reservation_batch_views.xml` (`list`, `form`) |
-| Smart button → related stock moves | **Done** | `action_view_moves`, `move_count` |
+| Smart button → related stock moves | **Done** | `action_view_moves`, `move_count` (inline `ir.actions.act_window` dict — no dependency on **`stock.stock_move_action`** / legacy menu XML ids) |
+| Smart button → transfers | **Done** | `action_view_pickings`, `picking_count`, `picking_ids` |
 
 ### Security
 
@@ -67,11 +74,11 @@ Legend: **Done** = implemented and usable | **Done (extended)** = requirement me
 
 | Deliverable | Status | Where |
 |-------------|--------|--------|
-| **Sprint plan** (3 days, priorities, what was **not** done) | **Done** | `README.md` — “Sprint Plan”, “What I intentionally did NOT implement” |
-| **Tests** (3–5+ cases: allocation, partial, no stock) | **Done** | `tests/test_reservation.py`: full, partial, no stock, cancel batch, confirm without lines; allocation auth denial; **FEFO-oriented test** runs when expiration metadata exists and skips otherwise—execution is **environment-dependent**, not a logic gap. **`tests/test_reservation_http.py`** (`HttpCase`): minimal **`/api/reservation/create`** unauthorized + Bearer success (with `cr.commit()` for worker visibility). |
-| **Performance** (N+1, critical queries, scaling, complexity) | **Done** | `README.md` — “Performance Strategy”, “Critical query” |
-| **Database** (indexes, constraints) | **Done** | `README.md` — “Database Design”; ORM indexes on models; SQL constraints on lines |
-| **Concurrency** (risks + proposed mitigation, **design level**) | **Done (design-level, as per assignment)** | `README.md` — “Concurrency Strategy”; code adds **`allocation_in_progress`**, state checks, and skip-for-alocated-lines—**application-level** guards aligned with the brief’s “explain, do not fully lock” scope. Row-level DB locking remains **future hardening**, not a failed requirement. |
+| **Sprint plan** (3 days, priorities, what was **not** done) | **Done** | `README.md` — “Sprint plan (historical)” |
+| **Tests** (3–5+ cases: allocation, partial, no stock) | **Done** | `tests/test_reservation.py`: full, partial, no stock, FEFO when expiry fields exist (skip otherwise), cancel batch, confirm without lines, allocate auth, **picking linkage**, **no picking without stock**, **re-allocate picking idempotency**. **`tests/test_reservation_http.py`**: JSON-RPC API routes and Bearer auth. **`tools/qa_full_validation.py`**: seven ORM scenarios including picking and idempotency → **`TEST_EXECUTION_REPORT.md`**. |
+| **Performance** (N+1, critical queries, scaling, complexity) | **Done** | `README.md` — “Performance strategy” |
+| **Database** (indexes, constraints) | **Done** | `README.md` — “Database design” |
+| **Concurrency** (risks + proposed mitigation, **design level**) | **Done (design-level, as per assignment)** | `README.md` — “Concurrency strategy”; **`allocation_in_progress`**, skip moves already on pickings — **application-level**; row-level DB locking documented as future work. |
 
 ---
 
@@ -94,11 +101,22 @@ Legend: **Done** = implemented and usable | **Done (extended)** = requirement me
 | Bonus | Status |
 |-------|--------|
 | Concurrency-safe allocation (DB locking) | **Missing** (documented; optional beyond brief) |
-| Picking generation from moves | **Missing** (explicitly deferred in README) |
-| Profiling / timings in logs | **Partial** (INFO around allocation; no structured timings) |
+| Picking generation from moves | **Done** — internal transfer **`stock.picking`** grouped by **`(location_id, location_dest_id)`**; **`picking_ids`** + **Transfers** smart button; confirm without auto-assign (see README **Stock transfer (picking) generation**) |
+| Profiling / timings in logs | **Done** — INFO **`Allocation line timing`** (`elapsed_ms` per line) and **`Finished allocation`** (`total_elapsed_ms`) |
 | Kanban / dashboard | **Missing** |
 | Advanced API (versioning, machine-readable error codes) | **Partial** (basic **`code`** strings on errors; versioning / prefixes not implemented) |
 | Test automation plan | **Partial** (Odoo tests in-repo; CI pipeline not documented) |
+
+---
+
+## Supplement: picking generation behavior
+
+| Item | Notes |
+|------|--------|
+| **`picking_ids`** | Many2many on **`stock.reservation.batch`** linking generated transfers |
+| **`picking_id`** | Related on **`stock.reservation.line`** from **`move_id.picking_id`** |
+| **Grouping** | Moves grouped by `(location_id, location_dest_id)`; **one picking per group** |
+| **Confirm vs assign** | **`action_confirm()`** on picking; **`action_assign()`** left to users |
 
 ---
 
@@ -120,8 +138,8 @@ Legend: **Done** = implemented and usable | **Done (extended)** = requirement me
 
 **Medium**
 
-4. **Picking** or delivery flow from generated moves if the business wants full warehouse documents.
-5. Extend **HTTP-level tests** (`/api/reservation/allocate`, `/status/` 403/404) if regression coverage for those routes is needed.
+4. Optional **delivery / outbound** chaining from staging if the business requires customer shipments from reservation output (not in current scope).
+5. Extend **HTTP-level tests** if regression coverage for additional edge routes is required (many paths already covered in **`test_reservation_http.py`**).
 
 **Nice-to-have**
 
@@ -137,7 +155,7 @@ The implementation **satisfies the assignment scope** and demonstrates **solid e
 |------|------|
 | Working module + custom models + allocation + moves + API + UI + security | **Yes** |
 | README engineering sections (sprint, performance, DB, concurrency, tests, limitations) | **Yes** |
-| Automated tests ≥ minimal scenarios | **Yes** (6 tests; FEFO test depends on expiration metadata availability) |
+| Automated tests ≥ minimal scenarios | **Yes** (`tests/test_reservation.py` ~15 **`TransactionCase`** methods including picking and idempotency; **`test_reservation_http.py`**; shell QA script — FEFO test skips if expiry metadata unavailable) |
 | Bonus / optional hardening | **Mixed** — intentionally scoped; documented where not pursued |
 
 For the authoritative wording of the assignment, see **`ORIGINAL_ASSIGNMENT.md`**.

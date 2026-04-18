@@ -1,6 +1,6 @@
 {
     'name': 'Stock Reservation Engine',
-    'version': '18.0.1.5.0',
+    'version': '18.0.1.6.4',
     'summary': 'Reservation and allocation engine with API exposure',
     'description': """
 Stock reservation and allocation engine with FEFO/FIFO logic, HTTP API, and demo data.
