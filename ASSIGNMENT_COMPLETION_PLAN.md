@@ -25,8 +25,7 @@ Close the remaining gaps between the delivered module and the original assignmen
 
 ### Remaining gaps
 - Dashboard is still primarily manually verified
-- Final performance and database evidence should be reviewed one more time for submission polish
-- Final README and reviewer checklist polish is still pending
+- Optional nice-to-have polish remains outside the mandatory assignment scope
 
 ### Additional assignment-verification items
 Even where the feature already exists, the final delivery should explicitly prove:
@@ -116,6 +115,7 @@ Acceptance criteria:
 ## Phase 4 — Verify performance and database requirements
 Priority: Medium
 Estimated effort: 45–90 minutes
+Status: Completed on the current branch with clearer README evidence for N+1, critical queries, scaling, indexes, and constraints
 
 ### Task 4: Make the engineering evidence explicit
 Target files:
@@ -139,6 +139,7 @@ Acceptance criteria:
 ## Phase 5 — Close documentation and QA polish
 Priority: Medium
 Estimated effort: 45–90 minutes
+Status: Completed on the current branch with final reviewer-facing checklist and submission polish
 
 ### Task 5: Add a final reviewer-facing validation pass
 Target files:
@@ -173,9 +174,9 @@ These are not required to satisfy the assignment, but can improve polish:
 ---
 
 ## Recommended execution order
-1. Verify the performance and database evidence against the assignment wording
-2. Update docs to reflect the final delivered behavior
-3. Do one final submission review against the original assignment
+1. Do one final manual dashboard check if desired
+2. Perform a final submission review against the original assignment
+3. Merge or submit the branch
 
 ---
 
@@ -189,4 +190,4 @@ The assignment should be considered fully ready when:
 ---
 
 ## Practical recommendation
-If time is limited, complete Phase 1, Phase 4, and Phase 5 first. Those give the highest value for assignment review quality with the lowest effort.
+The mandatory assignment scope is now covered. If time remains, focus only on optional dashboard/manual polish or submission packaging.
