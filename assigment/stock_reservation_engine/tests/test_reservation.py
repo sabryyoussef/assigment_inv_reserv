@@ -134,22 +134,27 @@ class TestStockReservationBatch(TransactionCase):
             batch._action_allocate_single()
 
     def test_allocate_raises_if_state_done(self):
+        """action_mark_done transitions to 'done'; allocation must then be refused."""
         batch = self._make_batch(confirm=False)
-        batch.state = 'done'
+        batch.action_mark_done()
+        self.assertEqual(batch.state, 'done')
         with self.assertRaises(UserError):
             batch._action_allocate_single()
 
     def test_allocate_raises_if_state_cancelled(self):
-        batch = self._make_batch(confirm=False)
-        batch.state = 'cancelled'
+        """action_cancel transitions to 'cancelled'; allocation must then be refused."""
+        batch = self._make_batch()
+        batch.action_cancel()
+        self.assertEqual(batch.state, 'cancelled')
         with self.assertRaises(UserError):
             batch._action_allocate_single()
 
     def test_allocate_raises_if_no_lines(self):
+        """Batch starts in 'draft' (a valid-for-allocation state) but has no lines."""
         batch = self.env['stock.reservation.batch'].create({
             'request_user_id': self.env.user.id,
-            'state': 'confirmed',
         })
+        self.assertFalse(batch.line_ids)
         with self.assertRaises(UserError):
             batch._action_allocate_single()
 
