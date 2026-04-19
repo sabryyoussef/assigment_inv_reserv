@@ -2,5 +2,6 @@ __pycache__/
 *.py[cod]
 *.egg-info/
 node_modules/
+tools/playwright_guide/run.log
 .venv/
 .vscode/
