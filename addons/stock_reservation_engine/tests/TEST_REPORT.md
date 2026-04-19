@@ -27,6 +27,26 @@ Odoo discovers test methods independently of runtime outcome. Methods that resol
 
 Since that verified run, the source has also been extended with additional regression coverage for linked-picking cancellation, dashboard action wiring, and versioned API aliases. Those additions are now documented below and should be included in the next full Odoo-hosted verification run.
 
+## Load and concurrency validation approach
+
+In addition to functional test coverage, the API endpoints are suitable for **automation-based load validation** using tools such as **k6**, **Locust**, **JMeter**, or **Newman**. See also [../docs/presentations_pdf/Odoo_18_API_Performance_Analysis.pdf](../docs/presentations_pdf/Odoo_18_API_Performance_Analysis.pdf) and [../docs/presentations_pdf/Odoo_18_Stock_Engine_Performance_Audit.pdf](../docs/presentations_pdf/Odoo_18_Stock_Engine_Performance_Audit.pdf).
+
+A practical reviewer scenario is:
+
+- simulate **50 virtual users**
+- hit **`/api/reservation/create`**, **`/api/reservation/allocate`**, and **`/api/reservation/status/<id>`**
+- mix authorized, unauthorized, and competing-stock requests
+- observe response behavior, error handling, and contention resilience
+
+### Sample log snippet
+
+Example runtime logging format during allocation:
+
+```text
+INFO stock_reservation_engine.models.reservation_batch: Allocation line timing batch=RES00031 line_id=33 product_id=59 elapsed_ms=13.03 allocated_qty=2.0
+INFO stock_reservation_engine.models.reservation_batch: Finished allocation for reservation batch RES00031 state=allocated lines=1 moves=1 total_elapsed_ms=13.30
+```
+
 ## Test Inventory
 
 ### tests/test_reservation.py (TransactionCase)

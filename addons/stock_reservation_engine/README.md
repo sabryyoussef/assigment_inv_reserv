@@ -23,7 +23,7 @@ The business need behind the module is to move from reactive stock handling towa
 | API layer | ✅ Done | Create, allocate, and status endpoints with bearer-token authentication |
 | UI integration | ✅ Done | Inventory menu integration, list/form views, smart buttons, dashboard |
 | Security model | ✅ Done | Users see their own records; managers see all |
-| Sprint simulation | ✅ Done | Structured Day 1 / Day 2 / Day 3 delivery breakdown |
+| Sprint simulation | ✅ Done | Structured Stage 1 / Stage 2 / Stage 3 delivery breakdown |
 | Testing | ✅ Done | Functional, regression, and HTTP/API coverage |
 | Performance and DB awareness | ✅ Done | Query, indexing, scaling, and concurrency discussion included |
 | Bonus engineering items | ✅ Delivered | Internal pickings, dashboard, timing logs, API version aliases |
@@ -249,7 +249,7 @@ The implementation creates internal transfer records so reserved stock is repres
 
 This assignment was structured as a realistic **3-day sprint**.
 
-### Day 1 — Foundation and data model
+### Stage 1 — Foundation and data model
 
 Priority items:
 
@@ -259,7 +259,7 @@ Priority items:
 - build list and form views
 - prepare sequence and demo data foundation
 
-### Day 2 — Allocation and stock integration
+### Stage 2 — Allocation and stock integration
 
 Priority items:
 
@@ -268,7 +268,7 @@ Priority items:
 - generate stock moves and internal transfers
 - add the API layer with token authentication
 
-### Day 3 — Testing, performance, and documentation
+### Stage 3 — Testing, performance, and documentation
 
 Priority items:
 
@@ -315,6 +315,32 @@ As data volume grows, the design remains understandable and maintainable because
 - filtering is explicit and index-friendly
 - FEFO adds sorting only when needed
 - the engine can later be optimized further by batching similar lines
+
+### Automation-based load and concurrency validation
+
+To address the assignment’s performance and concurrency discussion, the API surface is suitable for **automation-driven endpoint testing** using tools such as **k6**, **Locust**, **JMeter**, or **Newman/Postman collections**. Supporting reviewer material is also provided in [docs/presentations_pdf/Odoo_18_API_Performance_Analysis.pdf](docs/presentations_pdf/Odoo_18_API_Performance_Analysis.pdf) and [docs/presentations_pdf/Odoo_18_Stock_Engine_Performance_Audit.pdf](docs/presentations_pdf/Odoo_18_Stock_Engine_Performance_Audit.pdf).
+
+A representative validation scenario is:
+
+- **50 virtual users** hitting the reservation endpoints
+- mixed traffic across **create**, **allocate**, and **status** operations
+- concurrent requests targeting overlapping stock to observe contention behavior
+- verification of response stability, authorization, and predictable shortage handling
+
+Representative endpoints for this validation:
+
+- **POST** `/api/reservation/create`
+- **POST** `/api/reservation/allocate`
+- **GET** `/api/reservation/status/<id>`
+
+### Sample log snippet
+
+The module is designed to emit allocation timing information that helps reviewers inspect runtime behavior, for example. This runtime visibility is aligned with the performance evidence discussed in [docs/presentations_pdf/Odoo_18_API_Performance_Analysis.pdf](docs/presentations_pdf/Odoo_18_API_Performance_Analysis.pdf):
+
+```text
+INFO stock_reservation_engine.models.reservation_batch: Allocation line timing batch=RES00031 line_id=33 product_id=59 elapsed_ms=13.03 allocated_qty=2.0
+INFO stock_reservation_engine.models.reservation_batch: Finished allocation for reservation batch RES00031 state=allocated lines=1 moves=1 total_elapsed_ms=13.30
+```
 
 ---
 
