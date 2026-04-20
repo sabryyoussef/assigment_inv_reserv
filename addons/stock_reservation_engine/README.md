@@ -446,7 +446,7 @@ The module is delivery-ready, but some choices remain intentionally lightweight:
 - dashboard uses native Odoo reporting rather than custom KPI widgets
 - API rate limiting is not implemented
 - extreme-contention retry orchestration is left as future hardening
-- when `action_assign()` cannot fully reserve (e.g. insufficient net stock), `allocated_qty` is reconciled downward automatically; the batch state reflects the partial outcome correctly
+- when `action_assign()` cannot fully reserve (insufficient net stock), `allocated_qty` is reconciled downward automatically and the batch state reflects the partial outcome
 
 ---
 
