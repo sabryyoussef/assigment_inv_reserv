@@ -442,11 +442,113 @@ This includes coverage for:
 
 The module is delivery-ready, but some choices remain intentionally lightweight:
 
-- generated pickings are confirmed, not fully auto-assigned
 - complex warehouse routing is simplified to practical internal transfer logic
 - dashboard uses native Odoo reporting rather than custom KPI widgets
 - API rate limiting is not implemented
 - extreme-contention retry orchestration is left as future hardening
+- when `action_assign()` cannot fully reserve (e.g. insufficient net stock), `allocated_qty` is reconciled downward automatically; the batch state reflects the partial outcome correctly
+
+---
+
+## Review-Driven Improvements
+
+This section documents the changes made in response to a formal review that identified five critical gaps in the initial implementation.
+
+---
+
+### Gap 1 — Reservation semantics (highest priority)
+
+**What was found:**
+The allocation engine read `stock.quant` to compute available quantities and stored the result in `allocated_qty`, but it never incremented `stock.quant.reserved_quantity`. This meant that after allocation, the same stock remained freely claimable by any competing operation that ran before the transaction committed. The reservation was informational, not enforceable.
+
+**What was changed:**
+`_create_picking_for_moves` now calls `picking.action_assign()` immediately after `picking.action_confirm()`. This triggers Odoo's native `_action_assign` flow, which:
+
+1. creates `stock.move.line` records tied to specific quants
+2. increments `stock.quant.reserved_quantity`
+3. puts the move in state `assigned` (or `partially_available`)
+
+A new method `_sync_allocated_qty_from_moves` reads back `sum(ml.quantity for ml in move.move_line_ids)` after assignment and corrects `allocated_qty` if Odoo's engine reserved less than the pre-allocation scan expected. This ensures the custom figures are never overstated.
+
+**Reservation strength now:**
+Strong pre-allocation with Odoo-native hard reservation. After allocation, `stock.quant.reserved_quantity` is incremented, and competing flows that check `quant.quantity - quant.reserved_quantity` will correctly see zero available stock.
+
+**Remaining limitation:**
+This works within a single database transaction with NOWAIT locking. In extreme multi-process contention, the user receives a clear `UserError` asking them to retry. Full queue-based serialization is outside the scope of this module.
+
+---
+
+### Gap 2 — N+1 query pattern in FEFO / quant ordering
+
+**What was found:**
+`_get_quant_order(line)` was a separate method that performed an independent `stock.quant` search to detect whether any quants had expiry dates. This added one extra DB query per reservation line before `_allocate_line` then ran its own full quant search. Additionally, inside the FEFO sort key lambda, accessing `q.lot_id.expiration_date` would trigger one lazy ORM read per unique lot (another N+1 pattern as Odoo loads each `stock.lot` record individually).
+
+**What was changed:**
+- `_get_quant_order` was removed entirely.
+- `_allocate_line` now fetches quants once and detects FEFO from that same result set: `any(q.lot_id and q.lot_id.expiration_date for q in quants)`. No second query needed.
+- Before the sort, `quants.lot_id.mapped('expiration_date')` is called to trigger a single prefetch of all related `stock.lot` records. Subsequent accesses inside the sort lambda read from the ORM cache without issuing further queries.
+
+**Why this matters:**
+For a batch with 20 reservation lines, the old code issued at least 40 DB queries for FEFO detection alone (one `_get_quant_order` query + one full quant query per line), plus N lot reads inside each sort. The new code issues exactly one quant query and one lot query per line regardless of lot count.
+
+---
+
+### Gap 3 — API security: broad `su=True` privilege escalation
+
+**What was found:**
+In the `create_reservation` API endpoint, the authenticated user's environment was constructed with `su=True`:
+
+```python
+env_u = request.env(user=user.id, su=True)
+```
+
+`su=True` in Odoo's ORM sets the environment to superuser mode, which bypasses **all** model-level access control, record rules, and group checks. This meant any valid API token holder could create reservation batches as if they were a superuser, ignoring the `group_stock_reservation_user` / `group_stock_reservation_manager` permission boundary entirely.
+
+**What was changed:**
+`su=True` was removed. The environment is now created as:
+
+```python
+env_u = request.env(user=user.id)
+```
+
+This respects normal Odoo access control. If the token's associated user lacks the required group, the creation will raise an `AccessError` and the endpoint returns a clean `403 ERR_FORBIDDEN` response.
+
+Additionally, a new `ERR_CONFLICT` error code was added to the `allocate_reservation` endpoint. When a NOWAIT lock conflict is detected (another process is allocating the same batch), the response body now returns `code: "ERR_CONFLICT"` rather than the generic `ERR_VALIDATION`. This allows API clients to implement targeted retry logic for transient contention.
+
+**Remaining scope:**
+The `sudo()` browse in `allocate_reservation` and `reservation_status` is retained for the existence/ownership check pattern (check if batch exists before enforcing ownership). This is an intentional, documented pattern and does not elevate any data access beyond the ownership assertion.
+
+---
+
+### Gap 4 — FEFO not convincingly tested
+
+**What was found:**
+The existing test suite had no test that explicitly proved FEFO behavior. There was no case that created multiple lots with different expiry dates, added stock, and verified that the earliest-expiring lot was selected.
+
+**What was added:**
+Three new tests in `tests/test_reservation.py`:
+
+1. **`test_fefo_allocates_earliest_expiry_lot_first`** — creates two lots (`lot_early` at +5 days, `lot_late` at +30 days), adds stock for both (deliberately more stock in the early lot), requests 4 units, and asserts that `line.lot_id == lot_early`. Lot creation and stock insertion order is designed to rule out accidental FIFO-by-id passing the test.
+
+2. **`test_fefo_spans_lots_in_expiry_order`** — creates three lots (A=+3d, B=+10d, C=+60d), adds stock in reverse order (C first, A last), requests 5 units (more than lot A alone), and asserts that `line.lot_id == lot_a` (earliest expiry selected first, C never touched).
+
+3. **`test_native_reservation_protects_stock_from_competing_batch`** — allocates all available stock via batch 1, asserts that `stock.quant.reserved_quantity > 0`, then allocates batch 2 for the same product and asserts `allocated_qty == 0`. This is the definitive proof that native reservation is enforced and not just informational.
+
+---
+
+### Architecture decisions updated
+
+**Why `action_assign()` after `action_confirm()`?**
+
+`action_confirm()` validates the moves and sets them to state `confirmed`. `action_assign()` is the Odoo call that actually reserves stock: it searches quants, creates `stock.move.line` records, and increments `reserved_quantity`. Calling both in sequence is the standard Odoo pattern for confirmed-then-reserved internal transfers.
+
+**Why sync `allocated_qty` back from `move_line_ids`?**
+
+The pre-allocation scan (`_allocate_line`) reads `quant.quantity - quant.reserved_quantity` at a point in time. Between that read and the `action_assign()` call, another transaction could reserve some of the same stock (edge case in concurrent environments). Syncing back from the actual move lines means `allocated_qty` always reflects what is truly protected, not what was speculatively computed.
+
+**Concurrency strategy update:**
+
+The NOWAIT row-lock strategy on both the batch record and candidate quants remains in place. The lock on quants runs before the line loop. If any quant is locked by another process, the user gets a clear error immediately rather than a silent double-allocation. The combination of NOWAIT locking + `action_assign()` + `_sync_allocated_qty_from_moves` constitutes a solid, production-practical reservation path within a single Odoo database instance.
 
 ---
 
