@@ -249,6 +249,7 @@ class StockReservationBatch(models.Model):
             # Prefetch all related lot records (including expiration_date) in a single
             # query.  Without this, the sort key lambda would trigger one DB read per
             # unique lot, causing an N+1 pattern as the recordset is iterated.
+            # NOTE: result is intentionally discarded — the purpose is ORM cache warming.
             quants.lot_id.mapped('expiration_date')
 
             # Detect FEFO from already-loaded quant data — no separate DB round-trip.

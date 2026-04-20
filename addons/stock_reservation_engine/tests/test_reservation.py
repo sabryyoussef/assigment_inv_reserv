@@ -1,9 +1,8 @@
 import uuid
-from datetime import datetime, timedelta
+from datetime import timedelta
 
+from odoo import fields, sql_db
 from odoo.exceptions import AccessError, UserError
-
-from odoo import sql_db
 from odoo.tests import tagged
 from odoo.tests.common import TransactionCase
 
@@ -142,7 +141,7 @@ class TestStockReservation(TransactionCase):
         if not stocked:
             self.skipTest('Requires storable lot-tracked product with quants')
 
-        today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        today = fields.Datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
         lot_early = self.env['stock.lot'].create({
             'name': 'LOT-EARLY-%s' % uuid.uuid4().hex[:6],
             'product_id': product.id,
@@ -190,7 +189,7 @@ class TestStockReservation(TransactionCase):
         if not stocked:
             self.skipTest('Requires storable lot-tracked product with quants')
 
-        today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        today = fields.Datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
         lot_a = self.env['stock.lot'].create({
             'name': 'LOT-A-%s' % uuid.uuid4().hex[:6],
             'product_id': product.id,
