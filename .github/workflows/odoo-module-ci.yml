@@ -37,14 +37,19 @@ jobs:
 
       - name: Run module tests
         run: |
+          # The official Odoo Docker image entrypoint reads /etc/odoo/odoo.conf
+          # (which has db_host = db) and passes that hostname to wait-for-psql.py
+          # before Odoo's own --db_host flag takes effect. Override it by mounting
+          # a minimal config that points to the postgres service container on localhost.
+          mkdir -p "$RUNNER_TEMP/odoo-cfg"
+          printf '[options]\ndb_host = 127.0.0.1\ndb_port = 5432\ndb_user = odoo\ndb_password = odoo\n' \
+            > "$RUNNER_TEMP/odoo-cfg/odoo.conf"
+
           docker run --rm --network host \
             -v "$GITHUB_WORKSPACE/addons:/mnt/extra-addons" \
+            -v "$RUNNER_TEMP/odoo-cfg/odoo.conf:/etc/odoo/odoo.conf:ro" \
             odoo:18.0 \
             odoo \
-            --db_host 127.0.0.1 \
-            --db_port 5432 \
-            --db_user odoo \
-            --db_password odoo \
             --database ci_stock_reservation \
             --without-demo=all \
             --addons-path=/mnt/extra-addons,/usr/lib/python3/dist-packages/odoo/addons \
