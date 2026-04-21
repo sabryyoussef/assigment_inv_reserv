@@ -14,6 +14,7 @@ class ReservationAPI(http.Controller):
     _ERR_VALIDATION = 'ERR_VALIDATION'
     _ERR_FORBIDDEN = 'ERR_FORBIDDEN'
     _ERR_NOT_FOUND = 'ERR_NOT_FOUND'
+    _ERR_CONFLICT = 'ERR_CONFLICT'
     _ERR_INTERNAL = 'ERR_INTERNAL'
 
     def _json_error(self, message, status=400, code='ERR_VALIDATION'):
@@ -119,7 +120,10 @@ class ReservationAPI(http.Controller):
             return self._json_fail('Unauthorized', code=self._ERR_UNAUTHORIZED)
         try:
             line_commands = self._prepare_line_commands(payload.get('lines'))
-            env_u = request.env(user=user.id, su=True)
+            # Use the authenticated user's own environment (no privilege escalation).
+            # su=True was previously set here, which bypassed all access control checks.
+            # Normal group-based rules now apply, keeping the permission boundary intact.
+            env_u = request.env(user=user.id)
             company = user.company_id or env_u['res.company'].search([], limit=1)
             batch = env_u['stock.reservation.batch'].create({
                 'company_id': company.id,
@@ -167,7 +171,13 @@ class ReservationAPI(http.Controller):
         except AccessError as exc:
             return self._json_fail(str(exc), code=self._ERR_FORBIDDEN)
         except UserError as exc:
-            return self._json_fail(str(exc), code=self._ERR_VALIDATION)
+            # Distinguish concurrency/lock conflicts from ordinary validation errors so
+            # API clients can implement retry logic without treating every UserError as a
+            # permanent failure.
+            msg = str(exc)
+            if 'already being allocated' in msg or 'try again' in msg.lower():
+                return self._json_fail(msg, code=self._ERR_CONFLICT)
+            return self._json_fail(msg, code=self._ERR_VALIDATION)
         except Exception:
             _logger.exception('Unexpected error while allocating reservation via API')
             return self._json_fail('Unexpected server error.', code=self._ERR_INTERNAL)

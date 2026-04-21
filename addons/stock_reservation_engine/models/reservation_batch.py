@@ -231,23 +231,37 @@ class StockReservationBatch(models.Model):
             self.write({'allocation_in_progress': False})
 
     def _allocate_line(self, line):
+        """Compute the intended allocation for a single line from available quant stock.
+
+        FEFO detection is derived from the quants already fetched (no extra DB query).
+        Lot expiry dates are prefetched in one query before sorting to avoid N+1 reads
+        inside the sort key lambda.
+        """
         self.ensure_one()
         remaining = line.requested_qty
         allocated = 0.0
         lot_id = False
 
         domain = self._get_line_quant_domain(line)
-
-        use_fefo = self._get_quant_order(line)
         quants = self.env['stock.quant'].search(domain, order='in_date asc, id asc')
-        if use_fefo:
-            quants = quants.sorted(
-                key=lambda q: (
-                    q.lot_id.expiration_date if (q.lot_id and q.lot_id.expiration_date) else datetime.max,
-                    q.in_date or datetime.min,
-                    q.id,
+
+        if quants:
+            # Prefetch all related lot records (including expiration_date) in a single
+            # query.  Without this, the sort key lambda would trigger one DB read per
+            # unique lot, causing an N+1 pattern as the recordset is iterated.
+            # NOTE: result is intentionally discarded — the purpose is ORM cache warming.
+            quants.lot_id.mapped('expiration_date')
+
+            # Detect FEFO from already-loaded quant data — no separate DB round-trip.
+            use_fefo = any(q.lot_id and q.lot_id.expiration_date for q in quants)
+            if use_fefo:
+                quants = quants.sorted(
+                    key=lambda q: (
+                        q.lot_id.expiration_date if (q.lot_id and q.lot_id.expiration_date) else datetime.max,
+                        q.in_date or datetime.min,
+                        q.id,
+                    )
                 )
-            )
 
         for quant in quants:
             if remaining <= 0:
@@ -266,21 +280,6 @@ class StockReservationBatch(models.Model):
             'allocated_qty': allocated,
             'lot_id': lot_id,
         }
-
-    def _get_quant_order(self, line):
-        self.ensure_one()
-        Quant = self.env['stock.quant']
-        domain = [
-            ('product_id', '=', line.product_id.id),
-            ('location_id', 'child_of', line.location_id.id),
-            ('quantity', '>', 0),
-            ('company_id', '=', self.company_id.id),
-            ('lot_id', '!=', False),
-        ]
-        if line.lot_id:
-            domain.append(('lot_id', '=', line.lot_id.id))
-        quant_with_expiry = Quant.search(domain, limit=1).filtered(lambda q: q.lot_id and q.lot_id.expiration_date)
-        return bool(quant_with_expiry)
 
     def _compute_line_state(self, requested_qty, allocated_qty):
         if allocated_qty <= 0:
@@ -389,7 +388,31 @@ class StockReservationBatch(models.Model):
             picking.scheduled_date = self.scheduled_date
         moves.write({'picking_id': picking.id})
         picking.action_confirm()
+        # Trigger Odoo-native stock reservation: increments stock.quant.reserved_quantity
+        # and creates stock.move.line records so competing operations cannot claim the
+        # same stock.  This is the key step that turns our pre-allocation into a hard
+        # reservation enforced by Odoo's inventory engine.
+        picking.action_assign()
         return picking
+
+    def _sync_allocated_qty_from_moves(self):
+        """Reconcile allocated_qty on lines with Odoo's actual reserved quantities.
+
+        After calling picking.action_assign(), Odoo updates stock.quant.reserved_quantity
+        and creates stock.move.line records.  The quantity that was actually reserved may
+        differ from what _allocate_line computed (e.g. if another transaction reserved some
+        stock between our quant scan and the native assignment).  Reading back from
+        move_line_ids ensures allocated_qty truthfully reflects what is protected.
+        """
+        for line in self.line_ids:
+            if not line.move_id:
+                continue
+            actual = sum(ml.quantity for ml in line.move_id.move_line_ids)
+            if actual != line.allocated_qty:
+                line.write({
+                    'allocated_qty': actual,
+                    'state': self._compute_line_state(line.requested_qty, actual),
+                })
 
     def _generate_pickings_from_allocated_moves(self):
         self.ensure_one()
@@ -410,6 +433,11 @@ class StockReservationBatch(models.Model):
 
         if pickings:
             self.write({'picking_ids': [(4, p.id) for p in pickings]})
+
+        # Reconcile allocated_qty with what Odoo's assignment engine actually reserved.
+        # This keeps the custom allocation figures honest when native availability differs
+        # from the pre-allocation scan (e.g. due to concurrent transactions).
+        self._sync_allocated_qty_from_moves()
 
     def _create_stock_move_for_line(self, line):
         self.ensure_one()
